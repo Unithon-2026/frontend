@@ -76,6 +76,10 @@
   .selectbox .muted{color:var(--ink3);white-space:nowrap}
   .selectbox select{border:none;background:transparent;font-family:var(--sans);font-size:13px;font-weight:700;color:var(--ink);cursor:pointer;outline:none;max-width:150px}
   .chips{display:flex;gap:7px;flex-wrap:wrap}
+  .facetbar{display:flex;align-items:center;gap:8px;flex-basis:100%;margin:-4px 0 0;font-size:11.5px;color:var(--ink3)}
+  .linkbtn{font-family:inherit;font-size:11.5px;color:var(--teal400);background:none;border:none;padding:0;cursor:pointer;text-decoration:underline;text-underline-offset:2px}
+  .linkbtn:hover{color:var(--primary)}
+  .linkbtn:disabled{color:var(--ink3);cursor:default;text-decoration:none}
   .chip{font-size:12px;padding:7px 13px;border-radius:9999px;border:1px solid var(--border);background:var(--surface);color:var(--ink2);cursor:pointer;transition:.15s;white-space:nowrap}
   .chip:hover{border-color:var(--c200)}
   .chip.on{background:var(--primary);color:#fff;border-color:var(--primary)}
@@ -342,6 +346,11 @@
           <div class="seg on" id="seg-both"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="8" height="16" rx="1"/><path d="M14 8h7M14 12h7M14 16h7"/></svg>목록+지도</div>
           <div class="seg" id="seg-list"><svg viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h16"/></svg>목록</div>
         </div>
+        <!-- 자치구·업태 후보값을 어디서 뽑았는지(실데이터 표본/더미) 밝힌다. -->
+        <div class="facetbar">
+          <span id="facetnote"></span>
+          <button class="linkbtn" id="facetrescan" type="button">다시 스캔</button>
+        </div>
       </div>
 
       <div class="split" id="split">
@@ -384,11 +393,9 @@
 
     <!-- SAVED -->
     <section class="view" id="v-saved">
-      <div class="section-note warn">
+      <div class="section-note" id="savednote">
         <svg viewBox="0 0 24 24"><path d="M12 9v4M12 17h.01M10.3 3.9l-7.4 12.8A2 2 0 004.6 20h14.8a2 2 0 001.7-3.3L13.7 3.9a2 2 0 00-3.4 0z"/></svg>
-        <span><b>백엔드 미구현</b> — 관심 저장·영업 상태·메모는 서버에 엔터티가 없어
-        <b>브라우저 메모리에만</b> 저장됩니다. 새로고침하면 사라집니다.
-        구현 시 <code>POST /api/v1/watchlist</code> 규약은 <code>api/openapi.yaml</code> 참고.</span>
+        <span id="savednote-txt"></span>
       </div>
       <div class="filters">
         <div class="chips" id="f-salesstatus">
@@ -398,6 +405,8 @@
           <div class="chip" data-st="제안 진행">제안 진행</div>
           <div class="chip" data-st="보류">보류</div>
         </div>
+        <div class="spacer"></div>
+        <button class="linkbtn" id="clearsaved" type="button">저장 목록 비우기</button>
       </div>
       <div class="leadlist" id="savedlist" style="max-height:none"></div>
     </section>
@@ -550,6 +559,7 @@
     <div class="briefing" id="d-briefing">
       <p class="ph">이 매장의 인허가 정보를 바탕으로 접근 방법을 요약합니다.</p>
     </div>
+    <div class="prio-meta" id="d-brief-meta"></div>
     <button class="btn sm" id="genbrief">
       <svg viewBox="0 0 24 24"><path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9z"/></svg>
       <span>브리핑 생성</span>
@@ -558,7 +568,7 @@
     <div class="sec-t" style="margin-top:24px">AI CRM 후속 영업 <span class="planned">백엔드 미구현</span></div>
     <div class="crm" id="d-crm"></div>
 
-    <div class="sec-t" style="margin-top:24px">영업 상태 <span class="planned">메모리 전용</span></div>
+    <div class="sec-t" style="margin-top:24px">영업 상태 <span class="planned">이 브라우저에만 저장</span></div>
     <div class="status-row" id="statusrow"></div>
     <div class="sec-t">영업 메모 <span class="hint">최대 1,000자</span></div>
     <textarea class="memo" id="memo" maxlength="1000" placeholder="방문 시 참고할 내용을 기록하세요. 예) 점심 피크 12–13시 피해서 방문, 현재 한우 납품처 미확정."></textarea>
@@ -682,8 +692,71 @@ const MOCK_SHOPS = [
   {id:16, name:"면목동 왕돈까스",   addressJibun:"서울특별시 중랑구 면목동 1123-5",   gu:"중랑구", dong:"면목동",   phone:"02-435-1177",  businessType:"경양식",         area:92.0,  longitude:127.0863, latitude:37.5885, score:65,   priorityGrade:"A"}
 ];
 
-/* ── 클라이언트 전용 상태 (서버에 저장되지 않음) ─────────────────────────── */
-const watchlist = new Map(); // shopId -> {salesStatus, memo, shop}
+/* ── 브라우저 저장소 ──────────────────────────────────────────────────────
+   관심 목록·영업 메모·AI 브리핑을 담을 엔터티가 서버에 없어서 localStorage 를
+   쓴다. **이 브라우저에서만** 유효하고 팀과 공유되지 않는다는 점은 화면에도
+   그대로 적어 둔다. 사파리 프라이빗 모드나 용량 초과에서는 접근 자체가 예외를
+   던지므로 전부 여기서 잡고, 실패하면 조용히 메모리 전용으로 떨어진다.     */
+const STORE = {
+  watchlist: 'meetroute.watchlist.v1',
+  briefing:  'meetroute.briefing.v1',
+  facets:    'meetroute.facets.v1'
+};
+
+const store = {
+  ok: true,                       // 마지막 쓰기가 성공했는지
+  read(key, fallback){
+    try {
+      const raw = localStorage.getItem(key);
+      return raw ? JSON.parse(raw) : fallback;
+    } catch { return fallback; }  // 없거나 깨진 값은 없는 것으로 친다
+  },
+  write(key, value){
+    try { localStorage.setItem(key, JSON.stringify(value)); this.ok = true; }
+    catch { this.ok = false; }    // 용량 초과 · 프라이빗 모드
+    return this.ok;
+  }
+};
+
+/* ── 관심 목록 ────────────────────────────────────────────────────────────
+   shopId -> {salesStatus, memo, shop, savedAt}. 저장 형태는 배열이고 shop 은
+   목록/상세 응답의 스냅샷이라, 백엔드가 꺼져 있어도 카드를 다시 그릴 수 있다. */
+const SALES_STATUSES = ['접촉 예정', '방문 완료', '제안 진행', '보류'];
+const watchlist = new Map();
+
+function loadWatchlist(){
+  const rows = store.read(STORE.watchlist, []);
+  if (!Array.isArray(rows)) return;
+  rows.forEach(r => {
+    if (!r || typeof r.id !== 'number' || !r.shop) return;   // 깨진 항목은 버린다
+    watchlist.set(r.id, {
+      salesStatus: SALES_STATUSES.includes(r.salesStatus) ? r.salesStatus : SALES_STATUSES[0],
+      memo: typeof r.memo === 'string' ? r.memo.slice(0, 1000) : '',
+      shop: r.shop,
+      savedAt: r.savedAt || null
+    });
+  });
+}
+
+function persistWatchlist(){
+  store.write(STORE.watchlist, [...watchlist.entries()].map(([id, e]) =>
+    ({ id, salesStatus: e.salesStatus, memo: e.memo, shop: e.shop, savedAt: e.savedAt })));
+  paintStorageState();
+}
+
+/* 저장이 실제로 되고 있는지를 관심 목록 화면 상단에 그대로 밝힌다. */
+function paintStorageState(){
+  const box = document.getElementById('savednote');
+  const txt = document.getElementById('savednote-txt');
+  if (!box || !txt) return;
+  box.className = 'section-note' + (store.ok ? '' : ' warn');
+  txt.innerHTML = store.ok
+    ? '<b>이 브라우저에 저장됨</b> — 관심 저장·영업 상태·메모는 서버에 엔터티가 없어 '
+      + '<code>localStorage</code> 에만 남습니다. 새로고침해도 유지되지만 다른 기기·팀원과는 공유되지 않습니다. '
+      + '구현 시 <code>POST /api/v1/watchlist</code> 규약은 <code>api/openapi.yaml</code> 참고.'
+    : '<b>브라우저 저장 실패</b> — 저장 공간이 가득 찼거나 시크릿 모드입니다. '
+      + '관심 목록은 이번 세션에서만 유지되고 새로고침하면 사라집니다.';
+}
 
 const state = {
   gu: '', businessType: '', priorityGrade: '',
@@ -745,6 +818,81 @@ async function loadPriority(shopId){
 const recalcPriority = shopId => apiPost(`${SHOPS_PATH}/${shopId}/priority`);
 const loadBriefing    = shopId => apiPost(`${SHOPS_PATH}/${shopId}/briefing`);
 const runPriorityBatch = ()    => apiPost('/api/v1/priorities/batch');
+
+/* ── AI 브리핑 캐시 ──────────────────────────────────────────────────────
+   브리핑 1건이 서버에서 Claude API 호출 1회다. 드로어를 다시 열 때마다 새로
+   부르면 느리고 비용도 계속 나가므로, 생성 결과를 매장별로 담아 두고
+   "다시 생성" 을 눌렀을 때만 실제로 호출한다.                             */
+const BRIEFING_TTL_MS = 7 * 24 * 60 * 60 * 1000;   // 지나면 "오래된 내용" 으로 표시(삭제는 안 함)
+const BRIEFING_MAX = 50;                            // 오래된 것부터 버려 용량을 제한한다
+
+function readBriefingCache(){
+  const v = store.read(STORE.briefing, {});
+  return (v && typeof v === 'object' && !Array.isArray(v)) ? v : {};
+}
+
+function cachedBriefing(shopId){
+  const hit = readBriefingCache()[shopId];
+  return (hit && typeof hit.text === 'string') ? hit : null;
+}
+
+function cacheBriefing(shopId, text){
+  const all = readBriefingCache();
+  all[shopId] = { text, at: Date.now() };
+  const keys = Object.keys(all);
+  if (keys.length > BRIEFING_MAX){
+    keys.sort((a, b) => (all[a].at || 0) - (all[b].at || 0))
+        .slice(0, keys.length - BRIEFING_MAX)
+        .forEach(k => delete all[k]);
+  }
+  store.write(STORE.briefing, all);
+}
+
+/* ── 필터 후보값(자치구·업태) ────────────────────────────────────────────
+   백엔드에 "업태 목록" / "자치구 목록" 엔드포인트가 없다. 그렇다고 더미에서
+   뽑은 몇 종만 계속 쓰면 실제 데이터에 있는 업태를 고를 수 없으므로, 목록 API 를
+   큰 페이지로 몇 장 훑어서 **실제로 존재하는 값과 건수**를 뽑아 채운다.
+   훑는 비용이 있으니 결과는 localStorage 에 하루 동안 캐시한다.          */
+const FACET_PAGE_SIZE = 1000;   // Spring 기본 max-page-size 가 2000 이라 안전한 값
+const FACET_MAX_PAGES = 5;      // 최대 5,000건까지만 표본으로 본다
+const FACET_TTL_MS = 24 * 60 * 60 * 1000;
+
+let facets = null;   // {gu:[[값,건수]], businessType:[[값,건수]], sampled, total, truncated, source, at}
+
+function facetsFrom(rows, extra){
+  const tally = field => {
+    const m = new Map();
+    rows.forEach(r => { const v = r[field]; if (v) m.set(v, (m.get(v) || 0) + 1); });
+    return [...m.entries()];
+  };
+  return Object.assign({
+    gu: tally('gu').sort((a, b) => a[0].localeCompare(b[0], 'ko')),
+    businessType: tally('businessType').sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0], 'ko')),
+    sampled: rows.length,
+    at: Date.now()
+  }, extra);
+}
+
+/* 목록 API 를 id 오름차순으로 훑는다. 정렬을 id 로 고정하는 이유는 score 가
+   null 인 행이 섞여 있어도 페이지 경계가 흔들리지 않게 하기 위해서다. */
+async function scanFacets(){
+  const rows = [];
+  let total = 0, truncated = false;
+  for (let page = 0; page < FACET_MAX_PAGES; page++){
+    const p = await apiGet(SHOPS_PATH, { page, size: FACET_PAGE_SIZE, sort: 'id,asc' });
+    const content = p.content || [];
+    rows.push(...content);
+    total = (p.totalElements === undefined || p.totalElements === null) ? rows.length : p.totalElements;
+    if (p.last || !content.length) break;
+    if (page === FACET_MAX_PAGES - 1) truncated = true;
+  }
+  return facetsFrom(rows, { total, truncated, source: 'live' });
+}
+
+/* 백엔드가 없을 때의 후보값. 더미 기준이라는 사실을 화면에 밝힌다. */
+function mockFacets(){
+  return facetsFrom(MOCK_SHOPS, { total: MOCK_SHOPS.length, truncated: false, source: 'mock' });
+}
 
 /* 폴백: MOCK_SHOPS 를 필터·정렬·페이징해서 Spring Page 와 같은 모양으로 만든다. */
 function mockPage(){
@@ -1128,15 +1276,15 @@ async function refresh(){
   refreshMap();          // 지도는 별도 엔드포인트라 목록 렌더를 막지 않는다
 }
 
-/* ── 관심 목록 (메모리 전용) ─────────────────────────────────────────────── */
+/* ── 관심 목록 렌더 ──────────────────────────────────────────────────────── */
 function renderSaved(){
   const box = document.getElementById('savedlist');
-  let rows = [...watchlist.values()];
+  let rows = [...watchlist.values()].sort((a, b) => (b.savedAt || 0) - (a.savedAt || 0));
   if (state.savedFilter) rows = rows.filter(e => e.salesStatus === state.savedFilter);
 
   if (!rows.length){
     box.innerHTML = `<div class="empty"><b>저장한 매장이 없습니다</b>
-      매장 탐색에서 북마크 버튼을 눌러 저장하세요. (새로고침 시 초기화됩니다)</div>`;
+      매장 탐색에서 북마크 버튼을 눌러 저장하세요. 저장한 목록은 이 브라우저에 남습니다.</div>`;
     return;
   }
   box.innerHTML = rows.map((e, i) => {
@@ -1163,7 +1311,12 @@ function updateSavedCount(){
 
 function toggleSave(id, shop){
   if (watchlist.has(id)) watchlist.delete(id);
-  else watchlist.set(id, { salesStatus: '접촉 예정', memo: '', shop: shop || MOCK_SHOPS.find(s => s.id === id) });
+  else watchlist.set(id, {
+    salesStatus: SALES_STATUSES[0], memo: '',
+    shop: shop || MOCK_SHOPS.find(s => s.id === id),
+    savedAt: Date.now()
+  });
+  persistWatchlist();
   updateSavedCount();
   if (state.pageData) renderList(state.pageData);
   if (document.getElementById('v-saved').classList.contains('on')) renderSaved();
@@ -1179,8 +1332,8 @@ function paintDrawerSaveState(id){
     ? '<svg viewBox="0 0 24 24"><path d="M20 6L9 17l-5-5"/></svg>저장됨'
     : '<svg viewBox="0 0 24 24"><path d="M6 3h12a1 1 0 011 1v16l-7-4-7 4V4a1 1 0 011-1z"/></svg>관심 목록 저장';
   const entry = watchlist.get(id);
-  const cur = entry ? entry.salesStatus : '접촉 예정';
-  document.getElementById('statusrow').innerHTML = ['접촉 예정','방문 완료','제안 진행','보류']
+  const cur = entry ? entry.salesStatus : SALES_STATUSES[0];
+  document.getElementById('statusrow').innerHTML = SALES_STATUSES
     .map(s => `<div class="stbtn ${cur===s?'on':''}" data-st="${s}">${s}</div>`).join('');
   document.getElementById('memo').value = entry ? entry.memo : '';
 }
@@ -1212,6 +1365,27 @@ function paintBriefing(text, isError){
     : '<p class="ph">이 매장의 인허가 정보를 바탕으로 접근 방법을 요약합니다.</p>';
 }
 
+function formatWhen(ts){
+  const d = new Date(ts);
+  const p = n => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
+}
+
+/* 캐시에서 꺼내 보여 준 브리핑인지 한 줄로 밝히고, 버튼 문구도 맞춘다. */
+function paintBriefingMeta(hit){
+  const meta = document.getElementById('d-brief-meta');
+  const label = document.getElementById('genbrief').querySelector('span');
+  if (!hit){
+    meta.textContent = ''; meta.className = 'prio-meta';
+    label.textContent = '브리핑 생성';
+    return;
+  }
+  const stale = Date.now() - (hit.at || 0) > BRIEFING_TTL_MS;
+  meta.textContent = `저장된 브리핑 · ${formatWhen(hit.at)}` + (stale ? ' · 오래된 내용일 수 있습니다' : '');
+  meta.className = 'prio-meta' + (stale ? ' none' : '');
+  label.textContent = '브리핑 다시 생성';
+}
+
 /* ── AI CRM 후속 영업 (매니페스트 R-RABMND) ───────────────────────────────
    서버에 영업 이력·AI 제안 엔터티가 없어 화면 설계만 담아둔 자리입니다.
    각 단계는 기획서에서 채택된 선택지를 그대로 반영합니다.               */
@@ -1238,7 +1412,7 @@ function renderCrm(shop){
     </p>
     <p class="st-p" style="margin-top:8px">
       현재 영업 상태는 <b>${escapeHtml(entry ? entry.salesStatus : '미저장')}</b> —
-      관심 목록과 마찬가지로 브라우저 메모리에만 있습니다.
+      관심 목록과 마찬가지로 이 브라우저의 <code>localStorage</code> 에만 있습니다.
     </p>`;
 }
 
@@ -1293,7 +1467,9 @@ async function openDrawer(id){
        <div class="bar"><i style="width:${bd.total}%"></i></div></div>`;
 
   renderCrm(s);
-  paintBriefing(null);
+  const brief = cachedBriefing(s.id);        // 이미 생성해 둔 브리핑이 있으면 API 호출 없이 그린다
+  paintBriefing(brief ? brief.text : null);
+  paintBriefingMeta(brief);
   loadPriorityMeta(s.id);
 
   paintDrawerSaveState(s.id);
@@ -1306,6 +1482,7 @@ async function openDrawer(id){
 }
 
 function closeDrawer(){
+  if (memoTimer) flushMemo();          // 저장 대기 중인 메모를 흘리지 않는다
   document.getElementById('scrim').classList.remove('on');
   document.getElementById('drawer').classList.remove('on');
   document.querySelectorAll('.lead,.pin').forEach(el => el.classList.remove('sel'));
@@ -1330,15 +1507,77 @@ function bindShopEvents(){
 }
 
 /* ── 필터 바인딩 ─────────────────────────────────────────────────────────── */
-function fillSelect(el, values, allLabel){
+/* entries 는 [값, 건수] 쌍. 지금 걸려 있는 필터 값은 표본에 없더라도 남긴다
+   (표본을 벗어난 값으로 필터 중일 때 선택이 통째로 사라지는 걸 막는다). */
+function fillSelect(el, entries, allLabel, selected){
   el.innerHTML = `<option value="">${allLabel}</option>` +
-    values.map(v => `<option value="${escapeHtml(v)}">${escapeHtml(v)}</option>`).join('');
+    entries.map(([v, n]) =>
+      `<option value="${escapeHtml(v)}"${v === selected ? ' selected' : ''}>` +
+      `${escapeHtml(v)} (${n.toLocaleString('ko-KR')})</option>`).join('');
+  if (selected && !entries.some(([v]) => v === selected)){
+    el.insertAdjacentHTML('beforeend',
+      `<option value="${escapeHtml(selected)}" selected>${escapeHtml(selected)}</option>`);
+  }
+}
+
+function applyFacets(f){
+  facets = f;
+  fillSelect(document.getElementById('f-gu'), f.gu, '전체', state.gu);
+  fillSelect(document.getElementById('f-type'), f.businessType, '전체 업태', state.businessType);
+  paintFacetNote();
+}
+
+function paintFacetNote(){
+  const el = document.getElementById('facetnote');
+  if (!facets){ el.textContent = ''; return; }
+  const shape = `업태 ${facets.businessType.length}종 · 자치구 ${facets.gu.length}곳`;
+  if (facets.source === 'mock'){
+    el.textContent = `후보값은 더미 ${facets.sampled}건 기준 — ${shape}`;
+    return;
+  }
+  const base = `후보값은 실제 데이터 ${facets.sampled.toLocaleString('ko-KR')}건 표본 기준 — ${shape}`;
+  el.textContent = facets.truncated
+    ? `${base} (전체 ${facets.total.toLocaleString('ko-KR')}건 중 앞 ${facets.sampled.toLocaleString('ko-KR')}건만 훑음)`
+    : base;
+}
+
+/* 캐시가 신선하면 그대로 쓰고, 아니면 실제 데이터를 훑는다.
+   force 면 캐시를 무시한다("다시 스캔" 버튼).                            */
+async function syncFacets(opts){
+  const force = !!(opts && opts.force);
+  const btn = document.getElementById('facetrescan');
+  const note = document.getElementById('facetnote');
+
+  if (!force){
+    const cached = store.read(STORE.facets, null);
+    if (cached && cached.source === 'live' && Array.isArray(cached.gu)
+        && Date.now() - (cached.at || 0) < FACET_TTL_MS){
+      applyFacets(cached);
+      return;
+    }
+  }
+  if (!state.live){ applyFacets(mockFacets()); return; }
+
+  btn.disabled = true;
+  note.textContent = '실제 데이터에서 자치구·업태 후보를 읽는 중…';
+  try {
+    const f = await scanFacets();
+    store.write(STORE.facets, f);
+    applyFacets(f);
+  } catch (err) {
+    applyFacets(mockFacets());
+    note.textContent = '후보값을 읽지 못해 더미 기준으로 표시합니다: ' + err.message;
+  } finally {
+    btn.disabled = false;
+  }
 }
 
 function initFilters(){
-  // 백엔드에 지역·업태 목록 엔드포인트가 없어(planned) 더미에서 뽑아 채운다.
-  fillSelect(document.getElementById('f-gu'), [...new Set(MOCK_SHOPS.map(s => s.gu))].sort(), '전체');
-  fillSelect(document.getElementById('f-type'), [...new Set(MOCK_SHOPS.map(s => s.businessType))].sort(), '전체 업태');
+  // 첫 페인트는 네트워크 없이. 캐시가 있으면 캐시로, 없으면 더미로 채운다.
+  const cached = store.read(STORE.facets, null);
+  applyFacets(cached && Array.isArray(cached.gu) ? cached : mockFacets());
+
+  document.getElementById('facetrescan').addEventListener('click', () => syncFacets({ force: true }));
 
   document.getElementById('f-gu').addEventListener('change', e => {
     state.gu = e.target.value; state.page = 0;
@@ -1371,13 +1610,32 @@ document.getElementById('statusrow').addEventListener('click', e => {
   if (!watchlist.has(curShop.id)) toggleSave(curShop.id, curShop);
   const entry = watchlist.get(curShop.id);
   if (entry) entry.salesStatus = b.dataset.st;
+  persistWatchlist();
   document.querySelectorAll('#statusrow .stbtn').forEach(x => x.classList.toggle('on', x === b));
   if (document.getElementById('v-saved').classList.contains('on')) renderSaved();
 });
+
+/* 메모는 타이핑마다 쓰면 낭비라 잠깐 멈췄을 때만 저장하고, 포커스를 잃으면 즉시 쓴다. */
+let memoTimer = null;
+function flushMemo(){ clearTimeout(memoTimer); memoTimer = null; persistWatchlist(); }
 document.getElementById('memo').addEventListener('input', e => {
   if (!curShop) return;
   const entry = watchlist.get(curShop.id);
-  if (entry) entry.memo = e.target.value;
+  if (!entry) return;
+  entry.memo = e.target.value;
+  clearTimeout(memoTimer);
+  memoTimer = setTimeout(flushMemo, 400);
+});
+document.getElementById('memo').addEventListener('blur', () => { if (memoTimer) flushMemo(); });
+
+document.getElementById('clearsaved').addEventListener('click', () => {
+  if (!watchlist.size) return;
+  if (!confirm(`저장한 매장 ${watchlist.size}건과 메모를 모두 지웁니다. 계속할까요?`)) return;
+  watchlist.clear();
+  persistWatchlist();
+  updateSavedCount();
+  renderSaved();
+  if (state.pageData) renderList(state.pageData);
 });
 document.getElementById('savedrawer').addEventListener('click', () => {
   if (curShop) toggleSave(curShop.id, curShop);
@@ -1417,22 +1675,34 @@ document.getElementById('recalc').addEventListener('click', async () => {
 /* ── AI 브리핑 생성 ──────────────────────────────────────────────────────── */
 document.getElementById('genbrief').addEventListener('click', async () => {
   if (!curShop) return;
+  const shopId = curShop.id;
   const btn = document.getElementById('genbrief');
   if (!state.live){
-    paintBriefing('폴백 모드에서는 브리핑을 생성할 수 없습니다. 백엔드(POST /api/v1/shops/{id}/briefing)가 필요합니다.', true);
+    const meta = document.getElementById('d-brief-meta');
+    meta.textContent = '폴백 모드 — 새 브리핑을 생성할 수 없습니다 (POST /api/v1/shops/{id}/briefing 필요)';
+    meta.className = 'prio-meta none';
+    if (!cachedBriefing(shopId)) paintBriefing('백엔드에 연결되면 브리핑을 생성할 수 있습니다.', true);
     return;
   }
   btn.disabled = true; btn.querySelector('span').textContent = '생성 중…';
+  document.getElementById('d-brief-meta').textContent = '';
   paintBriefing('AI가 브리핑을 작성하고 있습니다…');
   try {
-    const res = await loadBriefing(curShop.id);
+    const res = await loadBriefing(shopId);
+    cacheBriefing(shopId, res.briefing);
+    if (curShop && curShop.id !== shopId) return;   // 그 사이 다른 매장을 열었으면 캐시만 남긴다
     paintBriefing(res.briefing);
+    paintBriefingMeta(cachedBriefing(shopId));
   } catch (err) {
     paintBriefing(err.code === ERROR_CODE.AI_BRIEFING_FAILED
       ? 'AI 브리핑 생성에 실패했습니다 (SHOP5001). 서버의 ANTHROPIC_API_KEY 설정을 확인하세요.'
       : '브리핑 생성 실패: ' + err.message, true);
+    paintBriefingMeta(cachedBriefing(shopId));   // 실패해도 이전 캐시 표시는 되살린다
   } finally {
-    btn.disabled = false; btn.querySelector('span').textContent = '브리핑 생성';
+    btn.disabled = false;
+    if (btn.querySelector('span').textContent === '생성 중…'){
+      btn.querySelector('span').textContent = cachedBriefing(shopId) ? '브리핑 다시 생성' : '브리핑 생성';
+    }
   }
 });
 
@@ -1553,11 +1823,14 @@ document.querySelectorAll('.nav-item').forEach(n => {
 });
 
 /* ── 시작 ───────────────────────────────────────────────────────────────── */
+loadWatchlist();
 initFilters();
 renderTeam();
 updateSavedCount();
+paintStorageState();
 initKakaoMap();   // 실패하면 내부에서 대체 화면으로 전환하고 refreshMap() 을 부른다
-refresh();
+/* 후보값 스캔은 연결 상태(state.live)가 정해진 뒤라야 하므로 첫 목록 조회 뒤에 돈다. */
+refresh().then(syncFacets);
 </script>
 </body>
 </html>

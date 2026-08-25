@@ -306,8 +306,11 @@ paths:
       x-backend-status: planned
       summary: "[미구현] 선택 가능한 시·군·구 및 담당 영업 구역 목록"
       description: >
-        F-HNLXDA. 서버에 Region 엔터티가 없습니다. 현재 프론트는 자치구 목록을 하드코딩하고
+        F-HNLXDA. 서버에 Region 엔터티가 없습니다. 현재 프론트는 `GET /api/v1/shops` 를
+        `size=1000&sort=id,asc` 로 최대 5장 훑어 실제로 존재하는 `gu` / `businessType` 값과
+        건수를 뽑아 드롭다운을 채우고(결과는 브라우저에 24시간 캐시),
         `GET /api/v1/shops?gu=` 에 구 이름 문자열을 그대로 넘깁니다.
+        이 엔드포인트가 생기면 스캔을 이 호출로 대체합니다.
 
 
         구현 시 주의: 백엔드 Shop 은 지역 **코드**가 아니라 `gu`/`dong` **문자열**을 들고 있으므로,
@@ -590,7 +593,8 @@ paths:
       summary: "[미구현] 내 관심 목록"
       description: >
         F-AQAMCL. 서버에 WatchlistEntry 엔터티와 사용자 개념이 모두 없습니다.
-        프로토타입의 저장/메모/영업상태는 현재 **브라우저 메모리에만** 존재합니다(새로고침 시 소실).
+        프로토타입의 저장/메모/영업상태는 현재 브라우저 `localStorage`(`meetroute.watchlist.v1`)
+        에만 존재합니다. 기기 간 공유가 되지 않으므로 이 엔드포인트가 생기면 마이그레이션이 필요합니다.
       parameters:
         - name: salesStatus
           in: query
