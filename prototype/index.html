@@ -144,7 +144,10 @@
     linear-gradient(90deg,rgba(29,58,66,.05) 1px,transparent 1px);
     background-size:40px 40px}
   .map-stub.off{display:none}
-  .map-note{position:absolute;left:15px;top:15px;right:130px;z-index:9;font-size:11px;line-height:1.6;
+  .map-topleft{position:absolute;left:15px;top:15px;z-index:9;display:flex;flex-direction:column;
+    gap:10px;align-items:flex-start;max-width:min(340px,calc(100% - 150px));pointer-events:none}
+  .map-topleft > *{pointer-events:auto}
+  .map-note{font-size:11px;line-height:1.6;
     background:var(--warning-bg);border:1px solid #EAD6AE;color:#8A5F1C;border-radius:10px;padding:9px 12px;display:none}
   .map-note.on{display:block}
   .map-note code{font-family:var(--mono);font-size:10.5px}
@@ -160,14 +163,21 @@
   .pin-NA .pill{background:var(--g-na)}
   .pin .lbl{position:absolute;left:50%;top:-9px;transform:translate(-50%,-100%);background:var(--ink);color:#fff;font-size:11px;white-space:nowrap;padding:5px 10px;border-radius:7px;opacity:0;pointer-events:none;transition:opacity .15s;font-weight:600}
   .pin.sel .lbl,.pin:hover .lbl{opacity:1}
-  .map-legend{position:absolute;left:15px;bottom:15px;background:rgba(255,255,255,.95);border:1px solid var(--border);border-radius:11px;padding:12px 14px;font-size:11px;z-index:8;box-shadow:var(--shadow)}
+  .map-legend{background:rgba(255,255,255,.95);border:1px solid var(--border);border-radius:11px;padding:12px 14px;font-size:11px;box-shadow:var(--shadow)}
   .map-legend .row{display:flex;align-items:center;gap:8px;margin-bottom:6px;color:var(--ink2)}
   .map-legend .row:last-child{margin-bottom:0}
   .map-legend i{width:10px;height:10px;border-radius:50%;display:inline-block}
   .map-count{position:absolute;right:15px;top:15px;background:rgba(255,255,255,.95);border:1px solid var(--border);border-radius:11px;padding:9px 13px;font-size:11.5px;z-index:8;color:var(--ink2);box-shadow:var(--shadow)}
   .map-count b{color:var(--ink);font-family:var(--mono)}
-  .map-blocked{position:absolute;inset:0;background:rgba(244,247,247,.94);z-index:9;display:none;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:32px;gap:10px}
+  .map-blocked{position:absolute;inset:0;background:rgba(244,247,247,.94);z-index:9;display:none;align-items:center;justify-content:center;text-align:center;padding:32px}
   .map-blocked.on{display:flex}
+  .mb-card{display:flex;flex-direction:column;align-items:center;gap:10px}
+  /* 카카오 지도가 살아 있을 때는 화면을 덮지 않고 아래쪽 카드로만 알린다.
+     전체를 덮으면 핀이 0건이 될 때마다 지도가 꺼진 것처럼 보인다. */
+  .map-blocked.soft{background:none;align-items:flex-end;padding-bottom:56px;pointer-events:none}
+  .map-blocked.soft .mb-card{background:rgba(255,255,255,.97);border:1px solid var(--border);border-radius:12px;
+    box-shadow:var(--shadow);padding:12px 16px;max-width:340px;gap:6px;pointer-events:auto}
+  .map-blocked.soft svg{display:none}
   .map-blocked svg{width:26px;height:26px;stroke:var(--ink3);fill:none;stroke-width:1.6}
   .map-blocked b{font-size:13px}
   .map-blocked p{font-size:12px;color:var(--ink2);max-width:300px;line-height:1.65}
@@ -372,20 +382,25 @@
           <div id="kakaomap"></div>
           <div class="map-stub" id="mapstub"><div class="map-river"></div><div id="pins"></div></div>
           <div class="map-count"><b id="mapn">–</b>개 표시</div>
-          <div class="map-legend">
-            <div class="row"><i style="background:#C4544E"></i>1등급 · 최우선</div>
-            <div class="row"><i style="background:#C88A2E"></i>2등급 · 우선</div>
-            <div class="row"><i style="background:#4C7481"></i>3등급 · 검토</div>
-            <div class="row"><i style="background:#6C7B7E"></i>4등급 · 보류</div>
-            <div class="row"><i style="background:#93A2A4"></i>미산정</div>
+          <!-- 범례와 안내는 좌상단에 위로부터 쌓인다. -->
+          <div class="map-topleft">
+            <div class="map-legend">
+              <div class="row"><i style="background:#C4544E"></i>1등급 · 최우선</div>
+              <div class="row"><i style="background:#C88A2E"></i>2등급 · 우선</div>
+              <div class="row"><i style="background:#4C7481"></i>3등급 · 검토</div>
+              <div class="row"><i style="background:#6C7B7E"></i>4등급 · 보류</div>
+              <div class="row"><i style="background:#93A2A4"></i>미산정</div>
+            </div>
+            <div class="map-note" id="mapnote"></div>
           </div>
-          <div class="map-note" id="mapnote"></div>
           <div class="map-blocked" id="mapblocked">
-            <svg viewBox="0 0 24 24"><path d="M12 21s-7-6-7-11a7 7 0 0114 0c0 5-7 11-7 11z"/><path d="M4 4l16 16"/></svg>
-            <b>표시할 매장이 없습니다</b>
-            <p>현재 필터 조건으로 <code>GET /api/v1/shops/map</code> 이 반환한 매장이 없거나,
-               좌표(<code>latitude</code>/<code>longitude</code>)가 비어 있습니다.
-               필터를 넓히거나 자치구 선택을 바꿔보세요.</p>
+            <div class="mb-card">
+              <svg viewBox="0 0 24 24"><path d="M12 21s-7-6-7-11a7 7 0 0114 0c0 5-7 11-7 11z"/><path d="M4 4l16 16"/></svg>
+              <b>이 영역에 표시할 매장이 없습니다</b>
+              <p>현재 필터 조건으로 <code>GET /api/v1/shops/map</code> 이 반환한 매장이 없거나,
+                 좌표(<code>latitude</code>/<code>longitude</code>)가 비어 있습니다.
+                 지도를 넓히거나 자치구 선택을 바꿔보세요.</p>
+            </div>
           </div>
         </div>
       </div>
@@ -1063,13 +1078,29 @@ const MAP_INIT_LEVEL = 7;
 /* SDK 를 못 쓸 때 대체 화면이 쓰는 기본 조회 영역(서울 전역). */
 const SEOUL_BBOX = { minLatitude: 37.41, maxLatitude: 37.70, minLongitude: 126.76, maxLongitude: 127.19 };
 
+/* 카카오 지도는 국내 타일만 제공한다. 이 밖으로 나가면 회색 여백만 보이므로
+   화면(중심이 아니라 보이는 영역 전체)이 이 안에 머물도록 잡아둔다.
+   제주(33.1)·울릉(130.9)·독도(131.9)까지 포함하는 범위. */
+const KOREA_BOUNDS = { minLat: 33.0, maxLat: 38.7, minLng: 124.5, maxLng: 132.0 };
+
+/* 카카오 레벨은 숫자가 클수록 축소. 14 까지 가면 한반도가 점이 되고 주변이 다 빈다. */
+const MAP_MAX_LEVEL = 13;
+
 const mapState = {
   ready: false,      // 카카오 지도 인스턴스가 살아 있는가
   map: null,
-  overlays: [],      // 화면에 올라간 CustomOverlay 들
-  markers: [],       // 마지막으로 받은 마커 데이터
-  reqSeq: 0          // 늦게 도착한 응답이 최신 결과를 덮지 않도록
+  overlays: new Map(),  // shopId -> { ov, sig }. 이동할 때마다 새로 만들면 핀이 깜빡인다.
+  markers: [],          // 마지막으로 받은 마커 데이터
+  reqSeq: 0,            // 늦게 도착한 응답이 최신 결과를 덮지 않도록
+  stubReason: '',       // 대체 화면으로 내려간 이유(있으면 안내를 지우지 않는다)
+  autoFit: false,       // 필터가 바뀐 뒤 결과가 안 보이면 한 번만 화면을 맞춰준다
+  clamping: false,      // 한국 밖으로 나간 화면을 되돌리는 중(재귀 방지)
+  idleTimer: null,      // idle 연타를 묶는다
+  resizeTimer: null     // 창 크기 변경도 마찬가지
 };
+
+/* 지도 이동 중에는 idle 이 연달아 터진다. 그때마다 조회하면 핀이 명멸한다. */
+const MAP_IDLE_DEBOUNCE_MS = 220;
 
 /* ── SDK 로더 ────────────────────────────────────────────────────────────
    autoload=false 로 받아서 kakao.maps.load() 로 초기화 시점을 직접 잡는다. */
@@ -1097,7 +1128,9 @@ function mapNote(html){
 
 /* 대체 화면으로 전환. 이유를 지도 위에 그대로 적어둔다. */
 function useMapStub(reason){
+  clearOverlays();          // 카카오 오버레이가 남아 있으면 대체 화면 위에 떠 있게 된다
   mapState.ready = false;
+  mapState.stubReason = reason;
   document.getElementById('kakaomap').classList.remove('on');
   document.getElementById('mapstub').classList.remove('off');
   mapNote(`<b>카카오 지도를 쓸 수 없어 대체 화면으로 표시합니다</b> — ${escapeHtml(reason)}.<br>
@@ -1114,20 +1147,118 @@ async function initKakaoMap(){
   }
 
   const kakao = window.kakao;
-  mapState.map = new kakao.maps.Map(document.getElementById('kakaomap'), {
+  const host = document.getElementById('kakaomap');
+
+  /* 컨테이너 크기가 0 이거나 아직 최종 폭이 아닐 때 지도를 만들면, 카카오가
+     그때의 크기를 기억해 타일을 한 조각만 그리고 나머지는 흰 채로 남는다.
+     새로고침 직후 지도가 깨져 보이던 원인. 크기가 잡힐 때까지 기다린다. */
+  host.classList.add('on');
+  document.getElementById('mapstub').classList.add('off');
+  await waitForSize(host);
+
+  mapState.map = new kakao.maps.Map(host, {
     center: new kakao.maps.LatLng(MAP_INIT_CENTER.lat, MAP_INIT_CENTER.lng),
     level: MAP_INIT_LEVEL
   });
   mapState.map.addControl(new kakao.maps.ZoomControl(), kakao.maps.ControlPosition.RIGHT);
+  mapState.map.setMaxLevel(MAP_MAX_LEVEL);   // 더 축소하면 국내 타일 밖이 보인다
   mapState.ready = true;
-
-  document.getElementById('kakaomap').classList.add('on');
-  document.getElementById('mapstub').classList.add('off');
   mapNote('');
 
+  /* 첫 페인트 이후 폭이 또 바뀔 수 있다(목록 렌더로 스크롤바 등장, 웹폰트 적용).
+     크기가 달라질 때마다 relayout 하도록 컨테이너를 계속 지켜본다. */
+  observeMapSize(host);
+
   // 지도 이동·확대가 끝날 때마다 보이는 영역만 다시 조회한다.
-  kakao.maps.event.addListener(mapState.map, 'idle', () => refreshMap());
+  // 드래그 한 번에 idle 이 여러 번 오므로 묶어서 마지막 것만 처리한다.
+  kakao.maps.event.addListener(mapState.map, 'idle', () => {
+    clampToKorea();          // 국내 밖으로 나갔으면 먼저 되돌린다
+    clearTimeout(mapState.idleTimer);
+    mapState.idleTimer = setTimeout(refreshMap, MAP_IDLE_DEBOUNCE_MS);
+  });
+
+  /* 사용자가 지도를 직접 잡은 순간부터는 자동 맞춤을 포기한다.
+     안 그러면 핀이 있는 곳으로 옮기는 도중 지도가 제멋대로 튕겨서
+     "옮겼더니 숫자가 사라졌다"처럼 보인다. */
+  ['dragstart', 'zoom_start'].forEach(ev =>
+    kakao.maps.event.addListener(mapState.map, ev, () => { mapState.autoFit = false; }));
+
+  // ResizeObserver 가 없는 브라우저를 위한 대비.
+  if (typeof ResizeObserver !== 'function') {
+    window.addEventListener('resize', () => {
+      clearTimeout(mapState.resizeTimer);
+      mapState.resizeTimer = setTimeout(relayoutMap, 150);
+    });
+  }
   refreshMap();
+}
+
+/* 컨테이너가 실제 크기를 가질 때까지 기다린다.
+   단, 좁은 화면(@media max-width:1080px)에서는 .mapwrap 자체가 display:none 이라
+   기다려도 소용이 없다. 그때는 바로 진행하고, 화면이 넓어지는 순간
+   ResizeObserver 가 relayout 을 걸어준다. */
+function waitForSize(el, timeoutMs = 1200){
+  const sized = () => el.offsetWidth > 0 && el.offsetHeight > 0;
+  const hidden = () => el.offsetParent === null;
+  if (sized() || hidden()) return Promise.resolve();
+  return new Promise(resolve => {
+    const started = Date.now();
+    (function poll(){
+      if (sized() || hidden() || Date.now() - started > timeoutMs) return resolve();
+      requestAnimationFrame(poll);
+    })();
+  });
+}
+
+/* 컨테이너 크기가 바뀔 때마다 relayout. 목록 렌더·웹폰트·스크롤바·창 크기·
+   화면 전환을 전부 한 군데서 받아낸다. relayout 은 크기를 바꾸지 않아 되돌지 않는다. */
+function observeMapSize(el){
+  if (typeof ResizeObserver !== 'function') return;
+  const ro = new ResizeObserver(() => {
+    if (!el.offsetWidth || !el.offsetHeight) return;   // 숨겨진 동안은 건너뛴다
+    clearTimeout(mapState.resizeTimer);
+    mapState.resizeTimer = setTimeout(relayoutMap, 80);
+  });
+  ro.observe(el);
+  if (document.fonts && document.fonts.ready) document.fonts.ready.then(relayoutMap).catch(() => {});
+}
+
+/* 지도 컨테이너가 display:none 이었다가 돌아오면 카카오는 크기를 0 으로 기억한다.
+   그대로 두면 타일이 안 그려지거나 반쪽만 나온다. 보일 때마다 알려준다. */
+function relayoutMap(){
+  if (!mapState.ready) return;
+  const host = document.getElementById('kakaomap');
+  if (!host.offsetWidth || !host.offsetHeight) return;   // 숨겨진 상태로 relayout 하면 0 을 기억한다
+  const center = mapState.map.getCenter();
+  mapState.map.relayout();
+  mapState.map.setCenter(center);
+}
+
+/* 보이는 영역이 국내를 벗어나면 중심을 밀어 넣는다. 중심만 검사하면 화면
+   절반이 빈 채로 남으므로, 화면 폭·높이를 빼고 남은 여유 안에서 가둔다.
+   현재 배율이 한국보다 넓으면 가둘 수 없으므로 한가운데로 보낸다. */
+function clampToKorea(){
+  if (!mapState.ready || mapState.clamping) return;
+  const kakao = window.kakao;
+  const b = mapState.map.getBounds();
+  const sw = b.getSouthWest(), ne = b.getNorthEast();
+  const latSpan = Math.abs(ne.getLat() - sw.getLat());
+  const lngSpan = Math.abs(ne.getLng() - sw.getLng());
+
+  const center = mapState.map.getCenter();
+  const fit = (lo, hi, span, v) => {
+    const half = span / 2;
+    if (hi - lo <= span) return (lo + hi) / 2;      // 화면이 더 넓다 -> 한가운데
+    return Math.min(Math.max(v, lo + half), hi - half);
+  };
+  const lat = fit(KOREA_BOUNDS.minLat, KOREA_BOUNDS.maxLat, latSpan, center.getLat());
+  const lng = fit(KOREA_BOUNDS.minLng, KOREA_BOUNDS.maxLng, lngSpan, center.getLng());
+
+  if (Math.abs(lat - center.getLat()) < 1e-7 && Math.abs(lng - center.getLng()) < 1e-7) return;
+
+  mapState.clamping = true;
+  mapState.map.setCenter(new kakao.maps.LatLng(lat, lng));
+  mapState.clamping = false;
 }
 
 /* 현재 지도 화면의 bounding box. SDK 가 없으면 서울 전역 고정값. */
@@ -1135,21 +1266,31 @@ function currentBbox(){
   if (!mapState.ready) return SEOUL_BBOX;
   const b = mapState.map.getBounds();
   const sw = b.getSouthWest(), ne = b.getNorthEast();
+
+  // 크게 축소하면 getBounds() 가 뒤집히거나 경도 ±180 을 넘어오기도 한다.
+  // 그대로 넘기면 '조건에 맞는 게 하나도 없는' 질의가 되어 핀이 통째로 사라진다.
+  const lat1 = Math.min(sw.getLat(), ne.getLat()), lat2 = Math.max(sw.getLat(), ne.getLat());
+  const lng1 = Math.min(sw.getLng(), ne.getLng()), lng2 = Math.max(sw.getLng(), ne.getLng());
   return {
-    minLatitude: sw.getLat(), minLongitude: sw.getLng(),
-    maxLatitude: ne.getLat(), maxLongitude: ne.getLng()
+    minLatitude:  Math.max(lat1, KOREA_BOUNDS.minLat),
+    maxLatitude:  Math.min(lat2, KOREA_BOUNDS.maxLat),
+    minLongitude: Math.max(lng1, KOREA_BOUNDS.minLng),
+    maxLongitude: Math.min(lng2, KOREA_BOUNDS.maxLng)
   };
 }
 
-function mockMarkers(){
-  const bb = currentBbox();
+/* bbox 를 넘기지 않으면 화면 영역, null 을 넘기면 영역 제한 없이 필터만 적용한다. */
+function mockMarkers(bbox){
+  const bb = bbox === undefined ? currentBbox() : bbox;
+  const inBox = s => !bb
+    || (s.latitude >= bb.minLatitude && s.latitude <= bb.maxLatitude
+     && s.longitude >= bb.minLongitude && s.longitude <= bb.maxLongitude);
   return MOCK_SHOPS
     .filter(s => (!state.gu || s.gu === state.gu)
               && (!state.businessType || s.businessType === state.businessType)
               && (!state.priorityGrade || s.priorityGrade === GRADE_TO_WIRE[state.priorityGrade])
               && s.latitude != null && s.longitude != null
-              && s.latitude >= bb.minLatitude && s.latitude <= bb.maxLatitude
-              && s.longitude >= bb.minLongitude && s.longitude <= bb.maxLongitude)
+              && inBox(s))
     .map(({id,name,businessType,addressJibun,phone,latitude,longitude,score,priorityGrade}) =>
           ({id,name,businessType,addressJibun,phone,latitude,longitude,score,priorityGrade}));
 }
@@ -1159,13 +1300,43 @@ async function refreshMap(){
   let markers;
   if (state.live) {
     try { markers = await loadMapMarkers(currentBbox()); }
-    catch { markers = []; }          // 지도 실패가 목록을 깨뜨리지는 않게 한다
+    catch (err) {
+      // 통신 실패는 '결과 0건'과 다르다. 핀을 지우면 지도가 꺼졌다 켜진 것처럼 보인다.
+      if (seq !== mapState.reqSeq) return;
+      mapNote(`<b>지도 조회에 실패했습니다</b> — ${escapeHtml(err.message)}. 직전 결과를 그대로 표시합니다.`);
+      return;
+    }
   } else {
     markers = mockMarkers();
   }
   if (seq !== mapState.reqSeq) return;   // 더 최신 요청이 이미 나갔다
+  if (!mapState.stubReason) mapNote('');  // 조회 실패 안내만 걷어낸다
   mapState.markers = markers;
   renderPins(markers);
+  autoFitIfEmpty(markers);
+}
+
+/* 첫 화면(서울시청)이나 바뀐 필터의 결과가 화면 밖에 있으면 지도만 텅 비어 보인다.
+   그럴 때 한 번만 데이터가 있는 곳으로 화면을 맞춘다. refresh() 당 최대 1회. */
+async function autoFitIfEmpty(markers){
+  if (!mapState.ready || !mapState.autoFit) return;
+  mapState.autoFit = false;
+  if (markers.length) return;
+
+  let wide;
+  if (state.live) {
+    try { wide = await loadMapMarkers({ ...SEOUL_BBOX, limit: 500 }); }
+    catch { return; }
+  } else {
+    wide = mockMarkers(null);
+  }
+  const geo = (wide || []).filter(s => s.latitude != null && s.longitude != null);
+  if (!geo.length) return;
+
+  const kakao = window.kakao;
+  const bounds = new kakao.maps.LatLngBounds();
+  geo.forEach(s => bounds.extend(new kakao.maps.LatLng(Number(s.latitude), Number(s.longitude))));
+  mapState.map.setBounds(bounds);   // idle 이 돌면서 새 영역으로 다시 조회된다
 }
 
 /* 핀 한 개의 마크업. 카카오 오버레이와 대체 화면이 같은 모양을 쓴다. */
@@ -1176,9 +1347,22 @@ function pinHtml(s){
     <div class="pill">${scoreText(s)}</div></div>`;
 }
 
+function pinNode(s){
+  const box = document.createElement('div');
+  box.innerHTML = pinHtml(s);
+  const node = box.firstElementChild;
+  node.addEventListener('click', () => openDrawer(s.id));
+  return node;
+}
+
+/* 핀 내용이 달라졌을 때만 다시 만들기 위한 지문. */
+function pinSig(s){
+  return `${s.name}|${s.score}|${s.priorityGrade}|${s.latitude}|${s.longitude}`;
+}
+
 function clearOverlays(){
-  mapState.overlays.forEach(o => o.setMap(null));
-  mapState.overlays = [];
+  mapState.overlays.forEach(e => e.ov.setMap(null));
+  mapState.overlays = new Map();
 }
 
 function renderPins(rows){
@@ -1186,6 +1370,8 @@ function renderPins(rows){
   const blocked = document.getElementById('mapblocked');
   document.getElementById('mapn').textContent = geo.length;
   blocked.classList.toggle('on', geo.length === 0);
+  // 진짜 지도 위에서는 덮지 않고 카드로만 알린다(덮으면 지도가 사라진 것처럼 보인다).
+  blocked.classList.toggle('soft', mapState.ready);
 
   if (mapState.ready) return renderKakaoPins(geo);
   return renderStubPins(geo);
@@ -1194,21 +1380,29 @@ function renderPins(rows){
 /* ── 카카오 CustomOverlay 로 렌더 ────────────────────────────────────────── */
 function renderKakaoPins(geo){
   const kakao = window.kakao;
-  clearOverlays();
+  const next = new Map();
+
   geo.forEach(s => {
-    const el = document.createElement('div');
-    el.innerHTML = pinHtml(s);
-    const node = el.firstElementChild;
-    node.addEventListener('click', () => openDrawer(s.id));
-    const ov = new kakao.maps.CustomOverlay({
-      position: new kakao.maps.LatLng(Number(s.latitude), Number(s.longitude)),
-      content: node,
-      yAnchor: 1,
-      clickable: true
-    });
-    ov.setMap(mapState.map);
-    mapState.overlays.push(ov);
+    const key = String(s.id);
+    const sig = pinSig(s);
+    let entry = mapState.overlays.get(key);
+    if (!entry || entry.sig !== sig){
+      if (entry) entry.ov.setMap(null);
+      const ov = new kakao.maps.CustomOverlay({
+        position: new kakao.maps.LatLng(Number(s.latitude), Number(s.longitude)),
+        content: pinNode(s),
+        yAnchor: 1,
+        clickable: true
+      });
+      ov.setMap(mapState.map);
+      entry = { ov, sig };
+    }
+    next.set(key, entry);
   });
+
+  // 화면 밖으로 나간 것만 걷어낸다. 전부 지웠다 다시 그리면 매 이동마다 깜빡인다.
+  mapState.overlays.forEach((entry, key) => { if (!next.has(key)) entry.ov.setMap(null); });
+  mapState.overlays = next;
 }
 
 /* ── 대체 화면: 좌표를 컨테이너 안 상대 위치로 환산해서 찍는다 ──────────── */
@@ -1273,6 +1467,7 @@ async function refresh(){
   const p = await loadShops();
   state.pageData = p;
   renderList(p);
+  mapState.autoFit = true;   // 결과가 화면 밖이면 지도만 비어 보이므로 한 번 맞춰준다
   refreshMap();          // 지도는 별도 엔드포인트라 목록 렌더를 막지 않는다
 }
 
@@ -1715,7 +1910,7 @@ document.getElementById('seg-both').addEventListener('click', () => {
   document.getElementById('seg-list').classList.remove('on');
   document.getElementById('split').classList.remove('mapoff');
   // 숨겨진 동안 크기가 0이었으므로 카카오 지도에 레이아웃 변경을 알린다.
-  if (mapState.ready) setTimeout(() => mapState.map.relayout(), 0);
+  setTimeout(relayoutMap, 0);
 });
 document.getElementById('seg-list').addEventListener('click', () => {
   document.getElementById('seg-list').classList.add('on');
@@ -1818,6 +2013,8 @@ document.querySelectorAll('.nav-item').forEach(n => {
     document.getElementById('title').innerHTML = titles[v][1] + ' <span id="sub">' + sub + '</span>';
     if (v === 'saved') renderSaved();
     if (v === 'crm') renderCrmView();
+    // 다른 화면에 있는 동안 지도 컨테이너는 display:none 이었다.
+    if (v === 'explore') setTimeout(relayoutMap, 0);
     closeDrawer(); window.scrollTo(0, 0);
   });
 });
