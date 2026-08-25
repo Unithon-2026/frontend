@@ -1,0 +1,10 @@
+{
+  "/api/v1/shops*": "/shops$1",
+  "/api/v1/regions*": "/regions$1",
+  "/api/v1/auth/me": "/users/1",
+  "/api/v1/watchlist*": "/watchlist$1",
+  "/api/v1/team/watchlist": "/teamWatchlist",
+  "/api/v1/admin/data-sources*": "/dataSources$1",
+  "/api/v1/admin/dedup-candidates*": "/dedupCandidates$1",
+  "/api/v1/admin/industry-weights": "/industryWeights"
+}
