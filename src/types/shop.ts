@@ -108,3 +108,22 @@ export const LABEL_TO_GRADE: Record<'1' | '2' | '3' | '4', PriorityGrade> = {
 export function gradeLabel(grade: PriorityGrade | null): string {
   return grade ? `${GRADE_TO_LABEL[grade]}등급` : '미산정';
 }
+
+/** 필터 UI 가 다루는 값. 빈 문자열은 '전체 등급'. */
+export type GradeLabelValue = '' | '1' | '2' | '3' | '4';
+
+/**
+ * CSS 클래스 접미사. 점수 배지(`grade-G1`)와 지도 핀(`pin-G1`)이 함께 씁니다.
+ * 미산정은 `NA` 로 떨어져 회색 + 점선 테두리가 됩니다.
+ */
+export function gradeKey(grade: PriorityGrade | null): string {
+  return grade ? `G${GRADE_TO_LABEL[grade]}` : 'NA';
+}
+
+/** 등급별 한 줄 설명. 범례와 상세 헤더가 씁니다. */
+export const GRADE_MEANING: Record<PriorityGrade, string> = {
+  S: '최우선',
+  A: '우선',
+  B: '검토',
+  C: '보류',
+};
