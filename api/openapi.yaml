@@ -514,6 +514,11 @@ paths:
         우선순위 점수 내림차순으로 최대 `limit` 개까지 조회합니다.
 
 
+        프론트는 **카카오 지도 JavaScript SDK** 를 쓰며, 지도 이동·확대가 끝날 때(`idle`)
+        `map.getBounds()` 의 남서/북동 좌표를 그대로 이 파라미터에 넣어 재조회합니다.
+        남서 → `minLatitude`/`minLongitude`, 북동 → `maxLatitude`/`maxLongitude`.
+
+
         목록(`GET /api/v1/shops`)과 달리 **좌표를 포함한 마커 DTO**(`ShopMapMarkerResponse`)를 주고,
         `Page` 가 아니라 **평평한 배열**을 돌려줍니다.
 
@@ -524,7 +529,7 @@ paths:
         - name: minLatitude
           in: query
           required: true
-          description: 지도 영역 남쪽 경계
+          description: 지도 영역 남쪽 경계 (카카오 `getBounds().getSouthWest().getLat()`)
           schema: { type: number, format: double, example: 37.41 }
         - name: maxLatitude
           in: query
@@ -539,7 +544,7 @@ paths:
         - name: maxLongitude
           in: query
           required: true
-          description: 지도 영역 동쪽 경계
+          description: 지도 영역 동쪽 경계 (카카오 `getBounds().getNorthEast().getLng()`)
           schema: { type: number, format: double, example: 127.19 }
         - name: gu
           in: query

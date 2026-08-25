@@ -352,3 +352,8 @@ AI 후속 제안의 시작 조건이 "**실패 또는 보류 결과**가 기록�
 | `POST /priorities/batch` | `PriorityBatchResponse` | — | — | — |
 
 목록에 좌표가 없는 것은 의도된 설계입니다 — 지도는 bounding box 전용 엔드포인트를 쓰세요.
+
+프론트는 **카카오 지도 JavaScript SDK** 를 쓰고, `map.getBounds()` 의 남서/북동 좌표를
+그대로 `/shops/map` 의 bounding box 파라미터로 넘깁니다. 지도를 움직일 때마다(`idle`)
+보이는 영역만 다시 조회하므로 전국 데이터를 한 번에 내려받지 않습니다.
+앱키는 `localStorage.meetroute.kakaoKey` 로 넣고, 없으면 격자 배경 대체 화면으로 자동 전환됩니다.

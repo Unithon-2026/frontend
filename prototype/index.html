@@ -131,10 +131,21 @@
   .pager .pos{font-family:var(--mono);font-size:11.5px}
 
   .mapwrap{position:sticky;top:100px;height:calc(100vh - 300px);border:1px solid var(--border);border-radius:16px;overflow:hidden;background:var(--c50);box-shadow:var(--shadow)}
-  .map{position:absolute;inset:0;background-image:
+  /* 카카오 지도 캔버스. SDK 가 뜨면 이게 보이고, 아니면 .map-stub 이 보인다. */
+  #kakaomap{position:absolute;inset:0;display:none}
+  #kakaomap.on{display:block}
+  /* SDK 를 못 쓸 때의 대체 배경 (좌표를 상대 위치로 찍는 기존 방식) */
+  .map-stub{position:absolute;inset:0;background-image:
     linear-gradient(rgba(29,58,66,.05) 1px,transparent 1px),
     linear-gradient(90deg,rgba(29,58,66,.05) 1px,transparent 1px);
     background-size:40px 40px}
+  .map-stub.off{display:none}
+  .map-note{position:absolute;left:15px;top:15px;right:130px;z-index:9;font-size:11px;line-height:1.6;
+    background:var(--warning-bg);border:1px solid #EAD6AE;color:#8A5F1C;border-radius:10px;padding:9px 12px;display:none}
+  .map-note.on{display:block}
+  .map-note code{font-family:var(--mono);font-size:10.5px}
+  /* 카카오 CustomOverlay 안에 들어가는 핀. 위치는 SDK 가 잡으므로 absolute 를 풀어준다. */
+  .kpin{position:relative;transform:translate(-50%,-50%);cursor:pointer}
   .map-river{position:absolute;left:-5%;top:58%;width:110%;height:70px;background:var(--c100);transform:rotate(-7deg);opacity:.75}
   .pin{position:absolute;transform:translate(-50%,-50%);cursor:pointer;z-index:3}
   .pin .pill{min-width:26px;height:24px;padding:0 6px;border-radius:9999px;border:2.5px solid #fff;box-shadow:0 1px 5px rgba(10,20,22,.24);display:flex;align-items:center;justify-content:center;font-family:var(--mono);font-size:11px;font-weight:700;color:#fff;transition:transform .15s}
@@ -348,7 +359,9 @@
           <div class="pager" id="pager"></div>
         </div>
         <div class="mapwrap">
-          <div class="map"><div class="map-river"></div></div>
+          <!-- 카카오 지도가 이 안에 그려집니다. SDK 를 못 쓰면 .map-stub 이 대신 보입니다. -->
+          <div id="kakaomap"></div>
+          <div class="map-stub" id="mapstub"><div class="map-river"></div><div id="pins"></div></div>
           <div class="map-count"><b id="mapn">–</b>개 표시</div>
           <div class="map-legend">
             <div class="row"><i style="background:#C4544E"></i>1등급 · 최우선</div>
@@ -357,7 +370,7 @@
             <div class="row"><i style="background:#6C7B7E"></i>4등급 · 보류</div>
             <div class="row"><i style="background:#93A2A4"></i>미산정</div>
           </div>
-          <div id="pins"></div>
+          <div class="map-note" id="mapnote"></div>
           <div class="map-blocked" id="mapblocked">
             <svg viewBox="0 0 24 24"><path d="M12 21s-7-6-7-11a7 7 0 0114 0c0 5-7 11-7 11z"/><path d="M4 4l16 16"/></svg>
             <b>표시할 매장이 없습니다</b>
@@ -873,48 +886,187 @@ function renderPager(p){
   if (next) next.addEventListener('click', () => { state.page = p.number + 1; refresh(); });
 }
 
-/* ── 지도 ─────────────────────────────────────────────────────────────────
+/* ── 지도 (카카오 지도) ───────────────────────────────────────────────────
    목록 DTO(ShopListItemResponse)에는 좌표가 없다. 지도는 전용 엔드포인트
    GET /api/v1/shops/map (ShopMapMarkerResponse) 로 따로 불러온다.
-   폴백일 때는 MOCK_SHOPS 를 같은 모양으로 걸러서 쓴다.                    */
 
-/* 서울 전역을 덮는 기본 bounding box. 실제 지도 라이브러리를 붙이면
-   지도 이동/줌 이벤트에서 실제 화면 영역으로 바꿔 넣으면 된다. */
+   카카오 지도의 getBounds() 가 그대로 백엔드의 bounding box 파라미터가 된다:
+     남서 좌표 -> minLatitude / minLongitude
+     북동 좌표 -> maxLatitude / maxLongitude
+   지도를 움직일 때마다(idle) 보이는 영역만 다시 조회하므로 전국 데이터를
+   한 번에 내려받지 않는다.
+
+   ── 앱키 설정 ────────────────────────────────────────────────────────────
+   빌드가 없어 .env 를 읽지 못하므로 브라우저 콘솔에서 넣는다:
+     localStorage.setItem('meetroute.kakaoKey', '<JavaScript 키>')
+   카카오 개발자 콘솔에서 **플랫폼 > Web 사이트 도메인**에 실행 주소
+   (예: http://localhost:3000)를 등록해야 SDK 가 동작한다.
+
+   키가 없거나 SDK 로드가 실패하면 좌표를 상대 위치로 찍는 대체 화면으로
+   자동 전환된다(기능은 그대로, 배경만 격자).                              */
+
+const KAKAO_APP_KEY = localStorage.getItem('meetroute.kakaoKey') || '';
+const KAKAO_SDK_URL = 'https://dapi.kakao.com/v2/maps/sdk.js';
+
+/* 서울 시청 부근. 카카오 지도의 최초 중심점. */
+const MAP_INIT_CENTER = { lat: 37.5665, lng: 126.9780 };
+const MAP_INIT_LEVEL = 7;
+
+/* SDK 를 못 쓸 때 대체 화면이 쓰는 기본 조회 영역(서울 전역). */
 const SEOUL_BBOX = { minLatitude: 37.41, maxLatitude: 37.70, minLongitude: 126.76, maxLongitude: 127.19 };
 
+const mapState = {
+  ready: false,      // 카카오 지도 인스턴스가 살아 있는가
+  map: null,
+  overlays: [],      // 화면에 올라간 CustomOverlay 들
+  markers: [],       // 마지막으로 받은 마커 데이터
+  reqSeq: 0          // 늦게 도착한 응답이 최신 결과를 덮지 않도록
+};
+
+/* ── SDK 로더 ────────────────────────────────────────────────────────────
+   autoload=false 로 받아서 kakao.maps.load() 로 초기화 시점을 직접 잡는다. */
+function loadKakaoSdk(){
+  if (!KAKAO_APP_KEY) return Promise.reject(new Error('앱키가 설정되지 않았습니다'));
+  if (window.kakao && window.kakao.maps) return Promise.resolve();
+
+  return new Promise((resolve, reject) => {
+    const el = document.createElement('script');
+    el.src = `${KAKAO_SDK_URL}?appkey=${encodeURIComponent(KAKAO_APP_KEY)}&autoload=false`;
+    el.onload = () => {
+      if (!window.kakao || !window.kakao.maps) return reject(new Error('SDK 를 불러왔지만 kakao.maps 가 없습니다'));
+      window.kakao.maps.load(resolve);
+    };
+    el.onerror = () => reject(new Error('SDK 스크립트를 불러오지 못했습니다 (앱키·도메인 등록 확인)'));
+    document.head.appendChild(el);
+  });
+}
+
+function mapNote(html){
+  const el = document.getElementById('mapnote');
+  el.innerHTML = html || '';
+  el.classList.toggle('on', !!html);
+}
+
+/* 대체 화면으로 전환. 이유를 지도 위에 그대로 적어둔다. */
+function useMapStub(reason){
+  mapState.ready = false;
+  document.getElementById('kakaomap').classList.remove('on');
+  document.getElementById('mapstub').classList.remove('off');
+  mapNote(`<b>카카오 지도를 쓸 수 없어 대체 화면으로 표시합니다</b> — ${escapeHtml(reason)}.<br>
+    콘솔에서 <code>localStorage.setItem('meetroute.kakaoKey','&lt;JavaScript 키&gt;')</code> 후 새로고침하세요.
+    카카오 개발자 콘솔의 <b>플랫폼 &gt; Web 사이트 도메인</b>에 <code>${escapeHtml(location.origin)}</code> 등록도 필요합니다.`);
+}
+
+async function initKakaoMap(){
+  try {
+    await loadKakaoSdk();
+  } catch (err) {
+    useMapStub(err.message);
+    return refreshMap();
+  }
+
+  const kakao = window.kakao;
+  mapState.map = new kakao.maps.Map(document.getElementById('kakaomap'), {
+    center: new kakao.maps.LatLng(MAP_INIT_CENTER.lat, MAP_INIT_CENTER.lng),
+    level: MAP_INIT_LEVEL
+  });
+  mapState.map.addControl(new kakao.maps.ZoomControl(), kakao.maps.ControlPosition.RIGHT);
+  mapState.ready = true;
+
+  document.getElementById('kakaomap').classList.add('on');
+  document.getElementById('mapstub').classList.add('off');
+  mapNote('');
+
+  // 지도 이동·확대가 끝날 때마다 보이는 영역만 다시 조회한다.
+  kakao.maps.event.addListener(mapState.map, 'idle', () => refreshMap());
+  refreshMap();
+}
+
+/* 현재 지도 화면의 bounding box. SDK 가 없으면 서울 전역 고정값. */
+function currentBbox(){
+  if (!mapState.ready) return SEOUL_BBOX;
+  const b = mapState.map.getBounds();
+  const sw = b.getSouthWest(), ne = b.getNorthEast();
+  return {
+    minLatitude: sw.getLat(), minLongitude: sw.getLng(),
+    maxLatitude: ne.getLat(), maxLongitude: ne.getLng()
+  };
+}
+
 function mockMarkers(){
+  const bb = currentBbox();
   return MOCK_SHOPS
     .filter(s => (!state.gu || s.gu === state.gu)
               && (!state.businessType || s.businessType === state.businessType)
               && (!state.priorityGrade || s.priorityGrade === GRADE_TO_WIRE[state.priorityGrade])
-              && s.latitude != null && s.longitude != null)
+              && s.latitude != null && s.longitude != null
+              && s.latitude >= bb.minLatitude && s.latitude <= bb.maxLatitude
+              && s.longitude >= bb.minLongitude && s.longitude <= bb.maxLongitude)
     .map(({id,name,businessType,addressJibun,phone,latitude,longitude,score,priorityGrade}) =>
           ({id,name,businessType,addressJibun,phone,latitude,longitude,score,priorityGrade}));
 }
 
 async function refreshMap(){
+  const seq = ++mapState.reqSeq;
   let markers;
   if (state.live) {
-    try { markers = await loadMapMarkers(SEOUL_BBOX); }
+    try { markers = await loadMapMarkers(currentBbox()); }
     catch { markers = []; }          // 지도 실패가 목록을 깨뜨리지는 않게 한다
   } else {
     markers = mockMarkers();
   }
+  if (seq !== mapState.reqSeq) return;   // 더 최신 요청이 이미 나갔다
+  mapState.markers = markers;
   renderPins(markers);
+}
+
+/* 핀 한 개의 마크업. 카카오 오버레이와 대체 화면이 같은 모양을 쓴다. */
+function pinHtml(s){
+  const g = gradeClass(s);
+  return `<div class="pin kpin pin-${g}" data-pin="${s.id}">
+    <div class="lbl">${escapeHtml(s.name)} · ${scoreText(s)}${s.score==null?'':'점'}</div>
+    <div class="pill">${scoreText(s)}</div></div>`;
+}
+
+function clearOverlays(){
+  mapState.overlays.forEach(o => o.setMap(null));
+  mapState.overlays = [];
 }
 
 function renderPins(rows){
   const geo = (rows || []).filter(s => s.latitude != null && s.longitude != null);
   const blocked = document.getElementById('mapblocked');
-  const pins = document.getElementById('pins');
+  document.getElementById('mapn').textContent = geo.length;
+  blocked.classList.toggle('on', geo.length === 0);
 
-  if (!geo.length){
-    pins.innerHTML = '';
-    blocked.classList.add('on');
-    document.getElementById('mapn').textContent = 0;
-    return;
-  }
-  blocked.classList.remove('on');
+  if (mapState.ready) return renderKakaoPins(geo);
+  return renderStubPins(geo);
+}
+
+/* ── 카카오 CustomOverlay 로 렌더 ────────────────────────────────────────── */
+function renderKakaoPins(geo){
+  const kakao = window.kakao;
+  clearOverlays();
+  geo.forEach(s => {
+    const el = document.createElement('div');
+    el.innerHTML = pinHtml(s);
+    const node = el.firstElementChild;
+    node.addEventListener('click', () => openDrawer(s.id));
+    const ov = new kakao.maps.CustomOverlay({
+      position: new kakao.maps.LatLng(Number(s.latitude), Number(s.longitude)),
+      content: node,
+      yAnchor: 1,
+      clickable: true
+    });
+    ov.setMap(mapState.map);
+    mapState.overlays.push(ov);
+  });
+}
+
+/* ── 대체 화면: 좌표를 컨테이너 안 상대 위치로 환산해서 찍는다 ──────────── */
+function renderStubPins(geo){
+  const pins = document.getElementById('pins');
+  if (!geo.length){ pins.innerHTML = ''; return; }
 
   const lats = geo.map(s => Number(s.latitude)), lngs = geo.map(s => Number(s.longitude));
   const minLat = Math.min(...lats), maxLat = Math.max(...lats);
@@ -922,16 +1074,26 @@ function renderPins(rows){
   const span = (min, max, v) => (max - min < 1e-9) ? 50 : 12 + ((v - min) / (max - min)) * 76;
 
   pins.innerHTML = geo.map(s => {
-    const g = gradeClass(s);
     const left = span(minLng, maxLng, Number(s.longitude));
     const top = 100 - span(minLat, maxLat, Number(s.latitude));
-    return `<div class="pin pin-${g}" data-pin="${s.id}" style="left:${left.toFixed(1)}%;top:${top.toFixed(1)}%">
-      <div class="lbl">${escapeHtml(s.name)} · ${scoreText(s)}${s.score==null?'':'점'}</div>
-      <div class="pill">${scoreText(s)}</div></div>`;
+    return pinHtml(s).replace('class="pin kpin',
+      `style="position:absolute;left:${left.toFixed(1)}%;top:${top.toFixed(1)}%" class="pin`);
   }).join('');
-  document.getElementById('mapn').textContent = geo.length;
-  document.querySelectorAll('.pin').forEach(p =>
+
+  pins.querySelectorAll('.pin').forEach(p =>
     p.addEventListener('click', () => openDrawer(+p.dataset.pin)));
+}
+
+/* 특정 매장으로 지도를 이동시킨다. 대체 화면에서는 스크롤·강조만. */
+function focusOnMap(shop){
+  if (mapState.ready && shop.latitude != null && shop.longitude != null){
+    mapState.map.setLevel(4);
+    mapState.map.panTo(new window.kakao.maps.LatLng(Number(shop.latitude), Number(shop.longitude)));
+  }
+  document.querySelectorAll('.pin').forEach(el =>
+    el.classList.toggle('sel', +el.dataset.pin === shop.id));
+  const p = document.querySelector(`.pin[data-pin="${shop.id}"]`);
+  if (p && !mapState.ready) p.scrollIntoView({ block: 'center' });
 }
 
 function renderList(p){
@@ -1222,9 +1384,11 @@ document.getElementById('savedrawer').addEventListener('click', () => {
 });
 document.getElementById('mapfocus').addEventListener('click', () => {
   if (!curShop) return;
-  const id = curShop.id; closeDrawer();
-  const p = document.querySelector(`.pin[data-pin="${id}"]`);
-  if (p){ p.classList.add('sel'); p.scrollIntoView({ block: 'center' }); }
+  const shop = curShop;
+  closeDrawer();
+  // 목록+지도 보기가 아니면 지도를 먼저 펼친다.
+  document.getElementById('seg-both').click();
+  focusOnMap(shop);
 });
 /* ── 우선순위 재계산 ─────────────────────────────────────────────────────── */
 document.getElementById('recalc').addEventListener('click', async () => {
@@ -1280,6 +1444,8 @@ document.getElementById('seg-both').addEventListener('click', () => {
   document.getElementById('seg-both').classList.add('on');
   document.getElementById('seg-list').classList.remove('on');
   document.getElementById('split').classList.remove('mapoff');
+  // 숨겨진 동안 크기가 0이었으므로 카카오 지도에 레이아웃 변경을 알린다.
+  if (mapState.ready) setTimeout(() => mapState.map.relayout(), 0);
 });
 document.getElementById('seg-list').addEventListener('click', () => {
   document.getElementById('seg-list').classList.add('on');
@@ -1390,6 +1556,7 @@ document.querySelectorAll('.nav-item').forEach(n => {
 initFilters();
 renderTeam();
 updateSavedCount();
+initKakaoMap();   // 실패하면 내부에서 대체 화면으로 전환하고 refreshMap() 을 부른다
 refresh();
 </script>
 </body>

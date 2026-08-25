@@ -37,7 +37,7 @@
 | 상태 | 엔드포인트 | 설명 |
 |:---:|---|---|
 | 🟢 | `GET /api/v1/shops` | 매장 목록 (구/업태/등급 필터 + 페이지) |
-| 🟢 | `GET /api/v1/shops/map` | **지도 영역(bounding box) 내 매장** — 좌표 포함 |
+| 🟢 | `GET /api/v1/shops/map` | **지도 영역(bounding box) 내 매장** — 카카오 지도가 이걸 씁니다 |
 | 🟢 | `GET /api/v1/shops/{shopId}` | 매장 상세 |
 | 🟢 | `GET /api/v1/shops/{shopId}/priority` | 우선순위 조회 (점수·등급·산정 시각) |
 | 🟢 | `POST /api/v1/shops/{shopId}/priority` | 우선순위 재계산 |
@@ -118,6 +118,43 @@ localStorage.removeItem('meetroute.apiBase');                        // 프록�
 
 ---
 
+## 🗺 카카오 지도
+
+지도는 **카카오 지도 JavaScript SDK** 를 씁니다. 백엔드의 `GET /api/v1/shops/map` 이
+bounding box 방식이라 카카오의 `getBounds()` 와 그대로 맞물립니다.
+
+```
+지도 이동/확대 끝남 (idle)
+   → map.getBounds()
+   → 남서 좌표 = minLatitude / minLongitude
+     북동 좌표 = maxLatitude / maxLongitude
+   → GET /api/v1/shops/map?minLatitude=…&maxLatitude=…&minLongitude=…&maxLongitude=…
+   → 받은 마커를 CustomOverlay 로 그림
+```
+
+보이는 영역만 조회하므로 전국 데이터를 한 번에 내려받지 않습니다. 자치구·업태·등급 필터도
+같이 넘어가서 목록과 지도가 항상 같은 조건을 봅니다.
+
+### 앱키 설정
+
+빌드가 없어 `.env` 를 읽지 못합니다. 브라우저 콘솔에서 넣으세요.
+
+```js
+localStorage.setItem('meetroute.kakaoKey', '<JavaScript 키>');
+location.reload();
+```
+
+1. [카카오 개발자](https://developers.kakao.com) → 내 애플리케이션 → **JavaScript 키** 복사
+2. 같은 앱의 **플랫폼 > Web** 에 실행 주소를 등록 (예: `http://localhost:3000`)
+   — 등록하지 않으면 SDK 가 거부합니다.
+
+### 앱키가 없으면
+
+자동으로 **대체 화면**으로 넘어갑니다. 격자 배경에 좌표를 상대 위치로 찍는 방식이라
+지도 타일만 없을 뿐 핀·필터·클릭은 그대로 동작합니다. 지도 위에 원인과 설정 방법이 표시됩니다.
+
+---
+
 ## 🔌 API 규약 (4가지만 기억하면 됩니다)
 
 ### 1. 모든 응답은 `ApiResponse` 봉투에 싸여 있다
@@ -183,7 +220,7 @@ localStorage.removeItem('meetroute.apiBase');                        // 프록�
 | 프로토타입 화면 | 주요 API | 상태 |
 |---|---|:---:|
 | 매장 탐색 (목록) | `GET /api/v1/shops` | 🟢 |
-| 지도 보기 | `GET /api/v1/shops/map` | 🟢 |
+| 지도 보기 (카카오 지도) | `GET /api/v1/shops/map` | 🟢 |
 | 상세 드로어 — 기본 정보 | `GET /api/v1/shops/{id}` | 🟢 |
 | 상세 드로어 — 우선순위 근거 | 산식 재현 + `GET /shops/{id}/priority` | 🟢 |
 | 상세 드로어 — 재계산 | `POST /api/v1/shops/{id}/priority` | 🟢 |
@@ -258,7 +295,7 @@ npx json-server --watch api/mock/db.json --routes api/mock/routes.json --port 40
 | 규모 | `sizeEstimate` `"중형 (48석)"` | `area` **숫자(㎡)** |
 | 지역 필터 | `regionCode` (`11200`) | `gu` (`"성동구"` 문자열) |
 | 정렬 | `sort=priority_desc` | `sort=score,desc` |
-| 지도 | 목록에 좌표 포함 가정 | **전용 엔드포인트** `/shops/map` (bounding box) |
+| 지도 | 목록에 좌표 포함 가정 | **카카오 지도** + 전용 엔드포인트 `/shops/map` (bounding box) |
 | 브리핑 | `GET` | **`POST`** (호출마다 AI 비용 발생) |
 | 인증 | JWT bearer | **없음** (전체 permitAll) |
 | — | 없음 | `phone` 이 새로 생김 |
