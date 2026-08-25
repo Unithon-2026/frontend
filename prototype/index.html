@@ -575,7 +575,13 @@
    폴백 경로도 실제와 동일한 Page 모양을 만들어 반환하므로 렌더 코드는 한 벌입니다.
    ========================================================================== */
 
-const API_BASE = (localStorage.getItem('meetroute.apiBase') || 'http://localhost:8080').replace(/\/+$/, '');
+/* API 주소 결정.
+   기본값은 **같은 오리진(빈 문자열)** 이다. tools/dev-server.mjs 가 /api/* 를 백엔드로
+   프록시하므로 브라우저 입장에서는 동일 오리진이 되고 CORS 가 발생하지 않는다.
+   백엔드를 직접 부르려면(= 백엔드에 CORS 가 있는 경우) 콘솔에서 절대주소를 지정한다:
+     localStorage.setItem('meetroute.apiBase', 'http://localhost:8080')
+   되돌리려면: localStorage.removeItem('meetroute.apiBase')                        */
+const API_BASE = (localStorage.getItem('meetroute.apiBase') ?? '').replace(/\/+$/, '');
 const SHOPS_PATH = '/api/v1/shops';
 const PAGE_SIZE = 20;
 
@@ -640,25 +646,27 @@ function scoreBreakdown(s){
 }
 
 /* ── 폴백용 더미. 필드명·타입은 ShopDetailResponse 와 1:1 (api/mock/db.json 과 동일).
-      score/priorityGrade 는 위 점수 모델로 계산한 값과 일치시켜 두었습니다. ── */
+      score/priorityGrade 는 위 점수 모델로 계산한 값과 일치시켜 두었습니다.
+      priorityGrade 는 **백엔드 enum 값(S/A/B/C)** 입니다. 화면 표기(1~4)는
+      WIRE_TO_GRADE 로 변환합니다. ── */
 const MOCK_SHOPS = [
-  {id:1,  name:"왕십리 화로구이",   addressJibun:"서울특별시 성동구 행당동 128-3",   gu:"성동구", dong:"행당동",   phone:"02-2299-1234", businessType:"식육(숯불구이)", area:158.4, longitude:127.0378, latitude:37.5612, score:90,   priorityGrade:"1"},
-  {id:2,  name:"성수동 곱창천국",   addressJibun:"서울특별시 성동구 성수동2가 315-12", gu:"성동구", dong:"성수동2가", phone:"02-464-8821",  businessType:"한식",           area:132.7, longitude:127.0559, latitude:37.5445, score:80,   priorityGrade:"1"},
-  {id:3,  name:"서울숲 한우다이닝", addressJibun:"서울특별시 성동구 성수동1가 685-44", gu:"성동구", dong:"성수동1가", phone:"02-462-7700",  businessType:"식육(숯불구이)", area:241.0, longitude:127.0421, latitude:37.5447, score:100,  priorityGrade:"1"},
-  {id:4,  name:"금호동 왕족발보쌈", addressJibun:"서울특별시 성동구 금호동2가 19-7",  gu:"성동구", dong:"금호동2가", phone:"02-2297-3355", businessType:"한식",           area:79.2,  longitude:127.0219, latitude:37.5479, score:70,   priorityGrade:"2"},
-  {id:5,  name:"성수 이자카야 노렌", addressJibun:"서울특별시 성동구 성수동2가 277-40", gu:"성동구", dong:"성수동2가", phone:"02-499-6120", businessType:"일식",           area:96.5,  longitude:127.0562, latitude:37.5423, score:50,   priorityGrade:"3"},
-  {id:6,  name:"응봉동 부대찌개집", addressJibun:"서울특별시 성동구 응봉동 234-1",   gu:"성동구", dong:"응봉동",   phone:"02-2295-4412", businessType:"한식",           area:145.3, longitude:127.0348, latitude:37.5502, score:80,   priorityGrade:"1"},
-  {id:7,  name:"성수 수제버거랩",   addressJibun:"서울특별시 성동구 성수동2가 302-9",  gu:"성동구", dong:"성수동2가", phone:null,           businessType:"경양식",         area:72.8,  longitude:127.0561, latitude:37.5448, score:45,   priorityGrade:"3"},
-  {id:8,  name:"마장동 순대국밥",   addressJibun:"서울특별시 성동구 마장동 527-3",    gu:"성동구", dong:"마장동",   phone:"02-2296-0088", businessType:"한식",           area:125.6, longitude:127.0435, latitude:37.5668, score:80,   priorityGrade:"1"},
-  {id:9,  name:"뚝섬 샐러드보울",   addressJibun:"서울특별시 성동구 성수동1가 656-1",  gu:"성동구", dong:"성수동1가", phone:"02-498-2210",  businessType:"경양식",         area:59.4,  longitude:127.0473, latitude:37.5471, score:65,   priorityGrade:"2"},
-  {id:10, name:"성동 베이커리카페", addressJibun:"서울특별시 성동구 성수동2가 333-15", gu:"성동구", dong:"성수동2가", phone:"02-464-1102", businessType:"커피숍",         area:85.9,  longitude:127.0558, latitude:37.5441, score:30,   priorityGrade:"4"},
-  {id:11, name:"행당동 김밥천국",   addressJibun:"서울특별시 성동구 행당동 62-9",     gu:"성동구", dong:"행당동",   phone:"02-2298-7714", businessType:"분식",           area:64.1,  longitude:127.0369, latitude:37.5573, score:35,   priorityGrade:"4"},
+  {id:1,  name:"왕십리 화로구이",   addressJibun:"서울특별시 성동구 행당동 128-3",   gu:"성동구", dong:"행당동",   phone:"02-2299-1234", businessType:"식육(숯불구이)", area:158.4, longitude:127.0378, latitude:37.5612, score:90,   priorityGrade:"S"},
+  {id:2,  name:"성수동 곱창천국",   addressJibun:"서울특별시 성동구 성수동2가 315-12", gu:"성동구", dong:"성수동2가", phone:"02-464-8821",  businessType:"한식",           area:132.7, longitude:127.0559, latitude:37.5445, score:80,   priorityGrade:"S"},
+  {id:3,  name:"서울숲 한우다이닝", addressJibun:"서울특별시 성동구 성수동1가 685-44", gu:"성동구", dong:"성수동1가", phone:"02-462-7700",  businessType:"식육(숯불구이)", area:241.0, longitude:127.0421, latitude:37.5447, score:100,  priorityGrade:"S"},
+  {id:4,  name:"금호동 왕족발보쌈", addressJibun:"서울특별시 성동구 금호동2가 19-7",  gu:"성동구", dong:"금호동2가", phone:"02-2297-3355", businessType:"한식",           area:79.2,  longitude:127.0219, latitude:37.5479, score:70,   priorityGrade:"A"},
+  {id:5,  name:"성수 이자카야 노렌", addressJibun:"서울특별시 성동구 성수동2가 277-40", gu:"성동구", dong:"성수동2가", phone:"02-499-6120", businessType:"일식",           area:96.5,  longitude:127.0562, latitude:37.5423, score:50,   priorityGrade:"B"},
+  {id:6,  name:"응봉동 부대찌개집", addressJibun:"서울특별시 성동구 응봉동 234-1",   gu:"성동구", dong:"응봉동",   phone:"02-2295-4412", businessType:"한식",           area:145.3, longitude:127.0348, latitude:37.5502, score:80,   priorityGrade:"S"},
+  {id:7,  name:"성수 수제버거랩",   addressJibun:"서울특별시 성동구 성수동2가 302-9",  gu:"성동구", dong:"성수동2가", phone:null,           businessType:"경양식",         area:72.8,  longitude:127.0561, latitude:37.5448, score:45,   priorityGrade:"B"},
+  {id:8,  name:"마장동 순대국밥",   addressJibun:"서울특별시 성동구 마장동 527-3",    gu:"성동구", dong:"마장동",   phone:"02-2296-0088", businessType:"한식",           area:125.6, longitude:127.0435, latitude:37.5668, score:80,   priorityGrade:"S"},
+  {id:9,  name:"뚝섬 샐러드보울",   addressJibun:"서울특별시 성동구 성수동1가 656-1",  gu:"성동구", dong:"성수동1가", phone:"02-498-2210",  businessType:"경양식",         area:59.4,  longitude:127.0473, latitude:37.5471, score:65,   priorityGrade:"A"},
+  {id:10, name:"성동 베이커리카페", addressJibun:"서울특별시 성동구 성수동2가 333-15", gu:"성동구", dong:"성수동2가", phone:"02-464-1102", businessType:"커피숍",         area:85.9,  longitude:127.0558, latitude:37.5441, score:30,   priorityGrade:"C"},
+  {id:11, name:"행당동 김밥천국",   addressJibun:"서울특별시 성동구 행당동 62-9",     gu:"성동구", dong:"행당동",   phone:"02-2298-7714", businessType:"분식",           area:64.1,  longitude:127.0369, latitude:37.5573, score:35,   priorityGrade:"C"},
   /* 우선순위 미산정 + 좌표 결측 케이스 (score/priorityGrade 가 null 인 실제 상황) */
   {id:12, name:"성수 마라룸",       addressJibun:"서울특별시 성동구 성수동2가 289-3",  gu:"성동구", dong:"성수동2가", phone:null,          businessType:"중국식",         area:null,  longitude:null,     latitude:null,    score:null, priorityGrade:null},
-  {id:13, name:"옥수반점",          addressJibun:"서울특별시 성동구 옥수동 428-2",    gu:"성동구", dong:"옥수동",   phone:"02-2282-5591", businessType:"중국식",         area:118.0, longitude:127.0179, latitude:37.5401, score:65,   priorityGrade:"2"},
-  {id:14, name:"건대입구 참숯갈비", addressJibun:"서울특별시 광진구 화양동 5-42",     gu:"광진구", dong:"화양동",   phone:"02-465-9900",  businessType:"식육(숯불구이)", area:187.2, longitude:127.0699, latitude:37.5405, score:90,   priorityGrade:"1"},
-  {id:15, name:"군자동 손칼국수",   addressJibun:"서울특별시 광진구 군자동 244-8",    gu:"광진구", dong:"군자동",   phone:"02-457-3321",  businessType:"한식",           area:68.5,  longitude:127.0793, latitude:37.5573, score:70,   priorityGrade:"2"},
-  {id:16, name:"면목동 왕돈까스",   addressJibun:"서울특별시 중랑구 면목동 1123-5",   gu:"중랑구", dong:"면목동",   phone:"02-435-1177",  businessType:"경양식",         area:92.0,  longitude:127.0863, latitude:37.5885, score:65,   priorityGrade:"2"}
+  {id:13, name:"옥수반점",          addressJibun:"서울특별시 성동구 옥수동 428-2",    gu:"성동구", dong:"옥수동",   phone:"02-2282-5591", businessType:"중국식",         area:118.0, longitude:127.0179, latitude:37.5401, score:65,   priorityGrade:"A"},
+  {id:14, name:"건대입구 참숯갈비", addressJibun:"서울특별시 광진구 화양동 5-42",     gu:"광진구", dong:"화양동",   phone:"02-465-9900",  businessType:"식육(숯불구이)", area:187.2, longitude:127.0699, latitude:37.5405, score:90,   priorityGrade:"S"},
+  {id:15, name:"군자동 손칼국수",   addressJibun:"서울특별시 광진구 군자동 244-8",    gu:"광진구", dong:"군자동",   phone:"02-457-3321",  businessType:"한식",           area:68.5,  longitude:127.0793, latitude:37.5573, score:70,   priorityGrade:"A"},
+  {id:16, name:"면목동 왕돈까스",   addressJibun:"서울특별시 중랑구 면목동 1123-5",   gu:"중랑구", dong:"면목동",   phone:"02-435-1177",  businessType:"경양식",         area:92.0,  longitude:127.0863, latitude:37.5885, score:65,   priorityGrade:"A"}
 ];
 
 /* ── 클라이언트 전용 상태 (서버에 저장되지 않음) ─────────────────────────── */
@@ -706,7 +714,8 @@ function loadMapMarkers(bbox){
   return apiGet(SHOPS_PATH + '/map', {
     minLatitude: bbox.minLatitude, maxLatitude: bbox.maxLatitude,
     minLongitude: bbox.minLongitude, maxLongitude: bbox.maxLongitude,
-    gu: state.gu, businessType: state.businessType, priorityGrade: state.priorityGrade,
+    gu: state.gu, businessType: state.businessType,
+    priorityGrade: GRADE_TO_WIRE[state.priorityGrade] || '',
     limit: bbox.limit || 500
   });
 }
@@ -729,7 +738,7 @@ function mockPage(){
   let rows = MOCK_SHOPS.filter(s =>
     (!state.gu || s.gu === state.gu) &&
     (!state.businessType || s.businessType === state.businessType) &&
-    (!state.priorityGrade || s.priorityGrade === state.priorityGrade));
+    (!state.priorityGrade || s.priorityGrade === GRADE_TO_WIRE[state.priorityGrade]));
 
   const [field, dir] = state.sort.split(',');
   const sign = dir === 'asc' ? 1 : -1;
@@ -754,7 +763,8 @@ function mockPage(){
 async function loadShops(){
   try {
     const page = await apiGet(SHOPS_PATH, {
-      gu: state.gu, businessType: state.businessType, priorityGrade: state.priorityGrade,
+      gu: state.gu, businessType: state.businessType,
+      priorityGrade: GRADE_TO_WIRE[state.priorityGrade] || '',
       page: state.page, size: state.size, sort: state.sort
     });
     setLive(true);
@@ -787,11 +797,14 @@ function setLive(live, note){
   const el = document.getElementById('apibanner');
   const txt = document.getElementById('apibanner-txt');
   el.className = 'apibanner ' + (live ? 'live' : 'fallback');
+  const target = API_BASE || location.origin + ' (프록시)';
   txt.innerHTML = live
-    ? `<b>백엔드 연결됨</b> — <code>${API_BASE}${SHOPS_PATH}</code>${note ? ' · ' + escapeHtml(note) : ''}`
-    : `<b>백엔드 미연결 — 더미 데이터로 표시 중</b> · <code>${API_BASE}</code> 응답 없음`
-      + `${note ? ' (' + escapeHtml(note) + ')' : ''}. 백엔드를 띄우거나 `
-      + `<code>localStorage.setItem('meetroute.apiBase','http://…')</code> 로 주소를 바꾸세요.`;
+    ? `<b>백엔드 연결됨</b> — <code>${escapeHtml(target)}${SHOPS_PATH}</code>${note ? ' · ' + escapeHtml(note) : ''}`
+    : `<b>백엔드 미연결 — 더미 데이터로 표시 중</b> · <code>${escapeHtml(target)}</code> 응답 없음`
+      + `${note ? ' (' + escapeHtml(note) + ')' : ''}. `
+      + (API_BASE
+          ? `백엔드를 띄우거나 주소를 확인하세요.`
+          : `<code>node tools/dev-server.mjs</code> 로 실행했는지, 백엔드가 8080 에 떠 있는지 확인하세요.`);
 }
 
 /* ── 표시 헬퍼 ───────────────────────────────────────────────────────────── */
@@ -799,11 +812,21 @@ function escapeHtml(s){
   return String(s ?? '').replace(/[&<>"']/g, c =>
     ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 }
-/* 등급은 서버에서 "1"~"4" 로 온다. CSS 클래스명은 숫자로 시작할 수 없어 G 접두사를 붙인다. */
-const gradeClass = s => s.priorityGrade ? 'G' + s.priorityGrade : 'NA';
+/* ── 등급 표기 ────────────────────────────────────────────────────────────
+   백엔드 PriorityGrade enum 은 S/A/B/C 이고, 화면에는 1~4 등급으로 보여준다.
+   **통신은 항상 S/A/B/C** 다 — 필터 파라미터도, 응답 파싱도 서버 값을 그대로 쓴다.
+   이 매핑은 표시층에만 존재하므로 백엔드를 고치지 않아도 된다.               */
+const WIRE_TO_GRADE = { S:'1', A:'2', B:'3', C:'4' };   // 서버 → 화면
+const GRADE_TO_WIRE = { '1':'S', '2':'A', '3':'B', '4':'C' };   // 화면 → 서버
+const GRADE_LABEL   = { '1':'최우선', '2':'우선', '3':'검토', '4':'보류' };
+
+/* 서버 값(S/A/B/C)에서 화면 등급 숫자를 뽑는다. 미산정이면 null. */
+const gradeNum = s => (s && s.priorityGrade) ? (WIRE_TO_GRADE[s.priorityGrade] || null) : null;
+
+/* CSS 클래스명은 숫자로 시작할 수 없어 G 접두사를 붙인다. */
+const gradeClass = s => { const n = gradeNum(s); return n ? 'G' + n : 'NA'; };
 const scoreText = s => (s.score === null || s.score === undefined) ? '–' : s.score;
-const gradeText = s => s.priorityGrade ? s.priorityGrade + '등급' : '미산정';
-const GRADE_LABEL = { '1':'최우선', '2':'우선', '3':'검토', '4':'보류' };
+const gradeText = s => { const n = gradeNum(s); return n ? n + '등급' : '미산정'; };
 
 /* area 는 백엔드가 숫자(㎡)만 주므로 규모 문구는 프론트에서 파생시킨다. */
 function areaLabel(area){
@@ -863,7 +886,7 @@ function mockMarkers(){
   return MOCK_SHOPS
     .filter(s => (!state.gu || s.gu === state.gu)
               && (!state.businessType || s.businessType === state.businessType)
-              && (!state.priorityGrade || s.priorityGrade === state.priorityGrade)
+              && (!state.priorityGrade || s.priorityGrade === GRADE_TO_WIRE[state.priorityGrade])
               && s.latitude != null && s.longitude != null)
     .map(({id,name,businessType,addressJibun,phone,latitude,longitude,score,priorityGrade}) =>
           ({id,name,businessType,addressJibun,phone,latitude,longitude,score,priorityGrade}));
@@ -1010,7 +1033,8 @@ async function loadPriorityMeta(shopId){
   try {
     const pr = await loadPriority(shopId);
     if (!pr){ el.textContent = '아직 계산된 우선순위가 없습니다 (PRIORITY4001)'; el.className = 'prio-meta none'; return; }
-    el.textContent = `산정 ${String(pr.calculatedAt).replace('T', ' ').slice(0, 16)} · ${pr.score}점 · ${pr.grade}등급`;
+    const gn = WIRE_TO_GRADE[pr.grade] || '?';
+    el.textContent = `산정 ${String(pr.calculatedAt).replace('T', ' ').slice(0, 16)} · ${pr.score}점 · ${gn}등급`;
     el.className = 'prio-meta';
   } catch (err) {
     el.textContent = '산정 이력을 불러오지 못했습니다'; el.className = 'prio-meta none';
@@ -1045,12 +1069,13 @@ function renderCrm(shop){
     ${steps.map(([n, b, t]) => `
       <div class="step"><div class="n">${n}</div>
         <div><span class="st-b">${escapeHtml(b)}</span><p class="st-p">${escapeHtml(t)}</p></div></div>`).join('')}
-    <div class="tags">
-      ${['접촉 결과','관심 품목','거절·보류 사유','다음 행동','예산','의사결정자','구매 시기','경쟁사']
-        .map(t => `<span class="tag">${t}</span>`).join('')}
-    </div>
-    <p class="st-p" style="margin-top:10px">
-      저장 라벨 범위입니다. 현재 영업 상태는 <b>${escapeHtml(entry ? entry.salesStatus : '미저장')}</b> —
+    <p class="st-p" style="margin-top:12px">
+      서버에 <code>SalesActivity</code> 엔터티는 있지만 컨트롤러가 없어 호출할 수 없습니다.
+      게다가 지금 엔터티는 방문 <b>차수</b>(미방문·1차~5차)만 담고 있어, 위 흐름이 요구하는
+      접촉 <b>결과</b>(관심·거절·보류·부재)와 AI 요약·라벨을 저장할 자리가 없습니다.
+    </p>
+    <p class="st-p" style="margin-top:8px">
+      현재 영업 상태는 <b>${escapeHtml(entry ? entry.salesStatus : '미저장')}</b> —
       관심 목록과 마찬가지로 브라우저 메모리에만 있습니다.
     </p>`;
 }
@@ -1069,10 +1094,11 @@ async function openDrawer(id){
   document.getElementById('d-score').textContent = scoreText(s);
   document.getElementById('d-grade').textContent = gradeText(s);
   document.getElementById('d-scorebox').className = 'big grade-' + g + (g === 'NA' ? ' na' : '');
-  document.getElementById('d-headline').textContent = s.priorityGrade
-    ? `${s.priorityGrade}등급 · ${GRADE_LABEL[s.priorityGrade] || ''}`
+  const gnum = gradeNum(s);
+  document.getElementById('d-headline').textContent = gnum
+    ? `${gnum}등급 · ${GRADE_LABEL[gnum] || ''}`
     : '우선순위 미산정';
-  document.getElementById('d-reason').textContent = s.priorityGrade
+  document.getElementById('d-reason').textContent = gnum
     ? `업태 ${bd.rows[0].got} + 면적 ${bd.rows[1].got} + 연락처 ${bd.rows[2].got} = ${bd.total}점`
     : '점수 계산이 아직 실행되지 않았습니다. 아래 재계산으로 즉시 산정할 수 있습니다.';
   document.getElementById('confnote').classList.toggle('on', g === 'NA');
@@ -1311,7 +1337,11 @@ function renderCrmView(){
     steps.map(([n,b,t]) => `<div class="step"><div class="n">${n}</div>
       <div><span class="st-b">${escapeHtml(b)}</span><p class="st-p">${escapeHtml(t)}</p></div></div>`).join('')
     + `<p class="st-p" style="margin-top:12px">대화 원문과 AI 요약은 저장일로부터 <b>3년</b> 보존하며,
-       학습·분석용 데이터 사용 동의는 <b>조직 관리자</b>가 조직 단위로 관리합니다.</p>`;
+       학습·분석용 데이터 사용 동의는 <b>조직 관리자</b>가 조직 단위로 관리합니다.</p>
+       <p class="st-p" style="margin-top:8px">⚠️ 백엔드 <code>SalesActivity</code> 는 현재
+       <code>status</code>(방문 차수) · <code>memo</code> · <code>visitedAt</code> 만 있습니다.
+       접촉 결과·AI 요약·데이터 라벨 컬럼이 없어 위 흐름을 그대로 저장할 수 없습니다.
+       또 <code>user_id</code> 가 필수라 <b>인증이 먼저 붙어야</b> 기록이 가능합니다.</p>`;
 }
 
 /* ── 우선순위 일괄 계산 ──────────────────────────────────────────────────── */

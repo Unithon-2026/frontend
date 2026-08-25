@@ -11,36 +11,111 @@
     "총점 100점 = 업태 가중치(0~50) + 시설 면적(0~30) + 연락처 보유(0 또는 20)."
   ],
   "businessTypeWeights": [
-    { "businessType": "식육(숯불구이)", "weight": 50 },
-    { "businessType": "호프/통닭", "weight": 45 },
-    { "businessType": "통닭(치킨)", "weight": 45 },
-    { "businessType": "한식", "weight": 40 },
-    { "businessType": "경양식", "weight": 35 },
-    { "businessType": "패밀리레스트랑", "weight": 35 },
-    { "businessType": "탕류(보신용)", "weight": 35 },
-    { "businessType": "뷔페식", "weight": 30 },
-    { "businessType": "중국식", "weight": 25 },
-    { "businessType": "일식", "weight": 20 },
-    { "businessType": "정종/대포집/소주방", "weight": 20 },
-    { "businessType": "감성주점", "weight": 20 },
-    { "businessType": "외국음식전문점(인도,태국등)", "weight": 20 },
-    { "businessType": "패스트푸드", "weight": 15 },
-    { "businessType": "이동조리", "weight": 10 },
-    { "businessType": "출장조리", "weight": 10 },
-    { "businessType": "푸드트럭", "weight": 10 },
-    { "businessType": "분식", "weight": 5 },
-    { "businessType": "김밥(도시락)", "weight": 5 },
-    { "businessType": "횟집", "weight": 5 },
-    { "businessType": "냉면집", "weight": 5 }
+    {
+      "businessType": "식육(숯불구이)",
+      "weight": 50
+    },
+    {
+      "businessType": "호프/통닭",
+      "weight": 45
+    },
+    {
+      "businessType": "통닭(치킨)",
+      "weight": 45
+    },
+    {
+      "businessType": "한식",
+      "weight": 40
+    },
+    {
+      "businessType": "경양식",
+      "weight": 35
+    },
+    {
+      "businessType": "패밀리레스트랑",
+      "weight": 35
+    },
+    {
+      "businessType": "탕류(보신용)",
+      "weight": 35
+    },
+    {
+      "businessType": "뷔페식",
+      "weight": 30
+    },
+    {
+      "businessType": "중국식",
+      "weight": 25
+    },
+    {
+      "businessType": "일식",
+      "weight": 20
+    },
+    {
+      "businessType": "정종/대포집/소주방",
+      "weight": 20
+    },
+    {
+      "businessType": "감성주점",
+      "weight": 20
+    },
+    {
+      "businessType": "외국음식전문점(인도,태국등)",
+      "weight": 20
+    },
+    {
+      "businessType": "패스트푸드",
+      "weight": 15
+    },
+    {
+      "businessType": "이동조리",
+      "weight": 10
+    },
+    {
+      "businessType": "출장조리",
+      "weight": 10
+    },
+    {
+      "businessType": "푸드트럭",
+      "weight": 10
+    },
+    {
+      "businessType": "분식",
+      "weight": 5
+    },
+    {
+      "businessType": "김밥(도시락)",
+      "weight": 5
+    },
+    {
+      "businessType": "횟집",
+      "weight": 5
+    },
+    {
+      "businessType": "냉면집",
+      "weight": 5
+    }
   ],
   "defaultWeight": 0,
   "areaScore": {
     "note": "시설 면적(㎡) 구간별 점수. area 가 null 이면 0점.",
     "tiers": [
-      { "minArea": 200, "score": 30 },
-      { "minArea": 100, "score": 20 },
-      { "minArea": 50, "score": 10 },
-      { "minArea": 0, "score": 0 }
+      {
+        "minArea": 200,
+        "score": 30
+      },
+      {
+        "minArea": 100,
+        "score": 20
+      },
+      {
+        "minArea": 50,
+        "score": 10
+      },
+      {
+        "minArea": 0,
+        "score": 0
+      }
     ]
   },
   "phoneScore": {
@@ -49,17 +124,37 @@
     "absent": 0
   },
   "gradeThresholds": {
-    "note": "1등급이 가장 높습니다. 서버 enum 상수명은 G1~G4, JSON 값은 \"1\"~\"4\".",
+    "note": "서버 값은 S/A/B/C 입니다. display 는 프론트 화면 표기(1~4)이며 통신에는 쓰지 않습니다.",
     "tiers": [
-      { "grade": "1", "minScore": 80, "label": "최우선" },
-      { "grade": "2", "minScore": 60, "label": "우선" },
-      { "grade": "3", "minScore": 40, "label": "검토" },
-      { "grade": "4", "minScore": 0,  "label": "보류" }
+      {
+        "grade": "S",
+        "display": "1등급",
+        "minScore": 80,
+        "label": "최우선"
+      },
+      {
+        "grade": "A",
+        "display": "2등급",
+        "minScore": 60,
+        "label": "우선"
+      },
+      {
+        "grade": "B",
+        "display": "3등급",
+        "minScore": 40,
+        "label": "검토"
+      },
+      {
+        "grade": "C",
+        "display": "4등급",
+        "minScore": 0,
+        "label": "보류"
+      }
     ]
   },
   "knownLimitations": [
     "업태명 해상도가 낮습니다 — '한식' 안에 고깃집과 김밥집이 함께 들어옵니다.",
-    "배점이 거친 계단식이라 동점이 많이 생깁니다 (한식40+면적20+전화20=80 → 전부 1등급).",
+    "배점이 거친 계단식이라 동점이 많이 생깁니다 (한식40+면적20+전화20=80 → 전부 S등급).",
     "방문 이력(Sales_Activity) 데이터가 없어 상권 밀집도·개업 시기·재방문율은 반영되지 않습니다.",
     "연락처 보유 여부가 20점이라, 데이터 결측이 곧 낮은 점수가 됩니다 (실제 영업 가치와 무관할 수 있음)."
   ]

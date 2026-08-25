@@ -16,11 +16,12 @@
 ├── .gitignore
 ├── prototype/
 │   └── index.html                ← 단일 파일 UI 프로토타입 (백엔드 연동 + 더미 폴백)
+├── tools/
+│   └── dev-server.mjs            ← 정적 서버 + /api 프록시 (CORS 우회, 의존성 없음)
 └── api/
     ├── openapi.yaml              ← API 명세 (구현/미구현 구분 표기)
     ├── DATA_MODEL.md             ← 엔터티·필드 대조표·점수 산식
     ├── .env.example              ← 환경변수 예시
-    ├── backend-patch/            ← 백엔드에 적용할 패치 (아래 참고)
     └── mock/
         ├── db.json               ← Mock 데이터 (백엔드 필드명과 1:1)
         ├── routes.json           ← json-server 경로 매핑
@@ -42,8 +43,17 @@
 | 🟢 | `POST /api/v1/shops/{shopId}/priority` | 우선순위 재계산 |
 | 🟢 | `POST /api/v1/priorities/batch` | 전체 매장 일괄 계산 |
 | 🟢 | `POST /api/v1/shops/{shopId}/briefing` | AI 영업 브리핑 (Anthropic API 1회 호출) |
-| ⚪ | 인증 · 지역 · 관심목록 · 팀현황 · 데이터관리 · 변경이력 | **서버에 없음** |
-| ⚪ | **AI CRM 후속 영업** (`R-RABMND`) | **서버에 없음** — 화면 설계만 존재 |
+| ⚪ | `POST /api/v1/auth/login` · `/auth/signup` | **서버에 없음** (아래 참고) |
+| ⚪ | 지역 · 관심목록 · 팀현황 · 데이터관리 · 변경이력 | **서버에 없음** |
+| ⚪ | **AI CRM 후속 영업** (`R-RABMND`) | 엔터티만 있고 컨트롤러 없음 |
+
+> **API 명세서 대조 결과**
+>
+> - `POST /api/v1/priorities/batch` 가 명세서에 **빠져 있습니다.** 실제로는 구현되어 있습니다.
+> - `POST /api/v1/auth/login`·`/auth/signup` 은 명세서에 있지만 **구현되지 않았습니다.**
+>   `User` 엔터티에 **비밀번호 컬럼이 없고**, 인증 컨트롤러·JWT 의존성도 없습니다.
+> - `GET /api/v1/shops/map` 은 `minLatitude`·`maxLatitude`·`minLongitude`·`maxLongitude`
+>   **4개가 필수**입니다. 빠지면 `COMMON400` 입니다.
 
 프로토타입의 관심 목록·영업 상태·메모는 **브라우저 메모리에만** 존재합니다(새로고침 시 소실).
 팀 현황·데이터 관리·AI CRM 화면의 수치는 하드코딩된 더미이며, 화면에도 `미구현` 배지로 표시됩니다.
@@ -55,9 +65,24 @@
 `prototype/index.html` — 빌드 불필요.
 
 ```bash
-# 백엔드가 떠 있으면 실제 데이터로, 아니면 자동으로 더미 폴백
-python3 -m http.server 3000
+# 권장 — 정적 서버 + /api 프록시 (CORS 우회)
+node tools/dev-server.mjs
 # → http://localhost:3000/prototype/index.html
+```
+
+**백엔드 `SecurityConfig` 에 CORS 설정이 없습니다.** 그래서 3000 포트에서 8080 을 직접 부르면
+브라우저가 전부 막습니다. `tools/dev-server.mjs` 는 `/api/*` 요청을 백엔드로 대신 전달하므로
+브라우저 입장에서는 같은 오리진이 되고 **CORS 자체가 발생하지 않습니다.**
+백엔드를 고치지 않고 프론트만으로 해결하는 방법입니다.
+
+```bash
+BACKEND=http://192.168.0.10:8080 PORT=4000 node tools/dev-server.mjs   # 주소 변경
+```
+
+프록시 없이 그냥 정적 서빙만 하려면 (백엔드에 CORS 가 이미 있거나, 더미로만 볼 때):
+
+```bash
+python3 -m http.server 3000
 ```
 
 > ⚠️ `file://` 로 직접 열지 마세요. `fetch` 가 차단됩니다. 반드시 HTTP 로 서빙하세요.
@@ -66,36 +91,30 @@ python3 -m http.server 3000
 
 | 배너 | 의미 |
 |---|---|
-| 🟢 백엔드 연결됨 | `http://localhost:8080` 에서 실제 데이터를 받아옴 |
-| 🟡 백엔드 미연결 — 더미 데이터 | 서버 응답 없음. `MOCK_SHOPS` 로 폴백 |
+| 🟢 백엔드 연결됨 | 실제 데이터를 받아옴 (프록시 경유 또는 직접 호출) |
+| 🟡 백엔드 미연결 — 더미 데이터 | 서버 응답 없음. `MOCK_SHOPS` 로 폴백. 배너에 원인 안내 |
 
-백엔드 주소를 바꾸려면 브라우저 콘솔에서:
+프로토타입은 기본적으로 **같은 오리진**(`/api/...`)으로 요청합니다 — 위 프록시를 타기 위해서입니다.
+백엔드를 직접 부르려면(백엔드에 CORS 가 이미 있는 경우) 브라우저 콘솔에서:
 
 ```js
-localStorage.setItem('meetroute.apiBase', 'http://192.168.0.10:8080');
+localStorage.setItem('meetroute.apiBase', 'http://localhost:8080');  // 직접 호출
+localStorage.removeItem('meetroute.apiBase');                        // 프록시로 되돌리기
 ```
 
 ---
 
-## 🔧 백엔드에 먼저 적용할 패치
+## 🧷 백엔드는 건드리지 않습니다
 
-`api/backend-patch/0001-priority-grade-1-4-and-cors.patch`
+이 저장소만 수정하는 것을 전제로 맞춰져 있습니다. 백엔드에서 오는 값은 **그대로** 받아들이고,
+차이는 프론트 표시층에서 흡수합니다.
 
-백엔드 저장소에서:
-
-```bash
-git am < ../frontend/api/backend-patch/0001-priority-grade-1-4-and-cors.patch
-```
-
-두 가지가 들어 있습니다.
-
-1. **우선순위 등급 1~4 전환** — `PriorityGrade` 를 `S/A/B/C` 에서 `G1~G4` 로 바꾸고
-   `@JsonValue`/`@JsonCreator` 로 JSON·쿼리에서는 `"1"`~`"4"` 를 쓰게 합니다.
-2. **CORS 허용** — `SecurityConfig` 에 CORS 설정이 없어 브라우저가 `/api` 호출을 전부 막고 있었습니다.
-   `app.cors.allowed-origins` 로 오리진을 지정할 수 있고 기본값은 로컬 개발용입니다.
-
-**이 패치를 적용하지 않으면** 프로토타입이 항상 폴백(더미)으로 뜹니다 — CORS 때문입니다.
-등급 필터도 `?priorityGrade=1` 이 `COMMON400` 으로 떨어집니다.
+| 백엔드 현실 | 프론트 대응 |
+|---|---|
+| 등급이 `S`/`A`/`B`/`C` | 화면에만 1~4 등급으로 표기 (`WIRE_TO_GRADE`). 통신은 서버 값 그대로 |
+| CORS 설정 없음 | `tools/dev-server.mjs` 가 `/api` 를 프록시해 같은 오리진으로 만듦 |
+| 인증 없음 (`permitAll`) | 로그인 화면 없음. 사용자·권한 UI 는 더미 |
+| 관심목록·팀·이력 엔터티 없음 | 브라우저 메모리 + 더미. 화면에 `미구현` 배지 |
 
 ---
 
@@ -124,16 +143,18 @@ git am < ../frontend/api/backend-patch/0001-priority-grade-1-4-and-cors.patch
 
 **단, 지도(`/shops/map`)는 `Page` 가 아니라 평평한 배열입니다.**
 
-### 3. 등급은 1~4 — **1등급이 가장 높다**
+### 3. 등급 — 서버는 `S/A/B/C`, 화면은 1~4
 
-| 등급 | 점수 구간 | 의미 |
-|:---:|---|---|
-| `"1"` | 80 이상 | 최우선 |
-| `"2"` | 60 이상 | 우선 |
-| `"3"` | 40 이상 | 검토 |
-| `"4"` | 40 미만 | 보류 |
+| 서버 값 | 점수 구간 | 화면 표기 |
+|:---:|---|:---:|
+| `S` | 80 이상 | 1등급 · 최우선 |
+| `A` | 60 이상 | 2등급 · 우선 |
+| `B` | 40 이상 | 3등급 · 검토 |
+| `C` | 40 미만 | 4등급 · 보류 |
 
-문자열입니다(`"1"`, 숫자 `1` 아님). 필터도 `?priorityGrade=1`.
+**통신은 항상 서버 값입니다.** 필터도 `?priorityGrade=S` 로 나갑니다.
+1~4 표기는 `prototype/index.html` 의 `WIRE_TO_GRADE` / `GRADE_TO_WIRE` 매핑으로
+화면에서만 바뀝니다 — 백엔드를 고치지 않기 위한 선택입니다.
 
 점수는 **100점 만점**이고 산식은 이렇습니다:
 
@@ -233,7 +254,7 @@ npx json-server --watch api/mock/db.json --routes api/mock/routes.json --port 40
 | 주소 | `address` 한 덩어리 | `addressJibun` + `gu` + `dong` |
 | 업종 | `industry` (마케팅 카테고리) | `businessType` (**위생업태명** 원본) |
 | 점수 | `priorityScore` | `score` (**nullable**) |
-| **등급** | **S/A/B/C** | **`"1"`~`"4"`** (1이 최상위) |
+| 등급 | S/A/B/C | S/A/B/C (동일) · **화면 표기만 1~4** |
 | 규모 | `sizeEstimate` `"중형 (48석)"` | `area` **숫자(㎡)** |
 | 지역 필터 | `regionCode` (`11200`) | `gu` (`"성동구"` 문자열) |
 | 정렬 | `sort=priority_desc` | `sort=score,desc` |

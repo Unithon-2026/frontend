@@ -44,7 +44,7 @@
 | area | BigDecimal | ✓ | 시설 면적(㎡). JSON 에서는 **number** |
 | longitude / latitude | BigDecimal | ✓ | 좌표. null 이면 지도 미표시 |
 | score | Integer | ✓ | 우선순위 점수(0~100). **미계산 시 null** |
-| priorityGrade | enum(G1~G4) | ✓ | 우선순위 등급. JSON 에서는 **`"1"`~`"4"`**. **미계산 시 null** |
+| priorityGrade | enum(S/A/B/C) | ✓ | 우선순위 등급. **미계산 시 null** |
 
 **꼭 알아둘 것**
 
@@ -63,7 +63,7 @@
 |---|---|
 | `gu` | 정확히 일치. 부분 검색 아님 |
 | `businessType` | 정확히 일치 |
-| `priorityGrade` | `1`~`4` (**1등급이 최상위**). 그 외 값이면 `COMMON400` |
+| `priorityGrade` | `S`/`A`/`B`/`C`. 대소문자 무시. 그 외 값이면 `COMMON400` |
 | `page` | **0부터 시작** |
 | `size` | 기본 20 |
 | `sort` | `필드명,asc\|desc` (기본 `score,desc`) |
@@ -79,23 +79,24 @@
 | id | Long (PK) | |
 | shop | Shop (FK, unique) | 1:1 |
 | score | int | 점수 |
-| priorityGrade | enum(G1~G4) | 등급. **JSON 에서는 `"1"`~`"4"`** (`@JsonValue`) |
+| priorityGrade | enum(S/A/B/C) | 등급 |
 | calculatedAt | LocalDateTime | 산정 시점 |
 
 ### 등급 체계
 
-**1등급이 가장 높고 4등급이 가장 낮습니다.**
+**서버 값은 `S`/`A`/`B`/`C` 입니다.** 프론트는 화면에서만 1~4 등급으로 바꿔 표시합니다.
 
-| 등급 | 점수 구간 | 의미 |
-|:---:|---|---|
-| `1` | 80 이상 | 최우선 |
-| `2` | 60 이상 | 우선 |
-| `3` | 40 이상 | 검토 |
-| `4` | 40 미만 | 보류 |
-| `null` | — | 미산정 (계산 전) |
+| 서버 값 | 점수 구간 | 화면 표기 | 의미 |
+|:---:|---|:---:|---|
+| `S` | 80 이상 | 1등급 | 최우선 |
+| `A` | 60 이상 | 2등급 | 우선 |
+| `B` | 40 이상 | 3등급 | 검토 |
+| `C` | 40 미만 | 4등급 | 보류 |
+| `null` | — | 미산정 | 계산 전 |
 
-자바 enum 상수는 숫자로 시작할 수 없어 내부적으로는 `G1`~`G4` 이고 DB에도 그렇게 저장됩니다.
-JSON 직렬화와 쿼리 파라미터에서는 `@JsonValue`/`@JsonCreator` 로 `"1"`~`"4"` 를 씁니다.
+> 이 매핑은 **프론트 표시층에만** 있습니다 (`prototype/index.html` 의 `WIRE_TO_GRADE` /
+> `GRADE_TO_WIRE`). 요청 파라미터와 응답 파싱은 항상 서버 값(S/A/B/C)을 그대로 씁니다.
+> 백엔드를 고치지 않고 표기만 바꾸기 위한 선택입니다.
 
 ### 점수 산식
 
@@ -239,81 +240,55 @@ JSON 직렬화와 쿼리 파라미터에서는 `@JsonValue`/`@JsonCreator` 로 `
 
 ---
 
-### SalesActivity — 영업 시도 이력 (AI CRM)
+### 🟢 User — 사용자
 
-기획서 `R-RABMND` / `F-QBNKTD`. 잠재고객별 영업 시도를 기록합니다.
+`domain/user/entity/User.java`. **엔터티만 있고 컨트롤러·서비스는 없습니다.**
 
 | 필드 | 타입 | 설명 |
 |---|---|---|
 | id | Long (PK) | |
-| shop | Shop (FK) | 대상 잠재고객 |
-| assignee | User (FK) | 담당자. **User 엔터티가 없어 현재 채울 수 없음** |
-| attemptedAt | LocalDateTime | 시도 시점 |
-| contactMethod | enum | `cold_call` / `cold_email` / `visit` |
-| result | enum | `contacted` / `no_answer` / `interested` / `on_hold` / `rejected` |
-| memo | text | 담당자 원문 답변 (자유 입력) |
-| aiSummary | text | AI 요약 |
-| reviewStatus | enum | `pending_review` / `reviewed` |
-| nextContactDate | LocalDate (nullable) | 다음 접촉 예정일 |
+| name | String(50), not null | |
+| email | String(100), not null | |
+| phone | String(30) | |
+| assignedRegionId | Long | 담당 구역. Region 엔터티가 없어 단순 Long |
 
-**기획 확정 사항**
-- 기록 입력은 **선택형 질문과 자유 입력을 함께** 제공합니다.
-- 대화 원문과 AI 요약은 저장일로부터 **3년** 보존합니다.
-- 민감·불필요 정보가 감지되면 **저장 전에 경고하고 수정을 요청**합니다.
+> ⚠️ **비밀번호 컬럼이 없습니다.** API 명세서에 있는 `POST /api/v1/auth/signup`(비밀번호 회원가입)과
+> `POST /api/v1/auth/login` 을 붙이려면 인증 필드부터 추가해야 합니다.
+> 현재 `SecurityConfig` 도 전체 `permitAll` 이고 JWT 의존성도 없습니다.
 
 ---
 
-### DataLabel — AI 추출 데이터 라벨
+### 🟢 SalesActivity — 영업 활동 이력
 
-기획서 `F-FUPSJX`. 향후 AI CRM 분석·추천 개선에 쓸 구조화 데이터입니다.
+`domain/salesactivity/entity/SalesActivity.java`. **엔터티와 리포지토리만 있고
+컨트롤러·서비스가 없어 호출 가능한 엔드포인트는 없습니다.**
 
 | 필드 | 타입 | 설명 |
 |---|---|---|
 | id | Long (PK) | |
-| salesActivity | SalesActivity (FK) | |
-| type | enum | 아래 라벨 범위 참고 |
-| value | string | 라벨 값 (예: `한우 등심`) |
-| evidence | text | 추출 근거가 된 원문 조각 |
-| extractedBy | enum | `ai` / `user` |
-| approved | boolean | **담당자 승인 전에는 저장하지 않습니다** |
-| savedAt | LocalDateTime | |
+| shop | Shop (FK, not null) | |
+| user | User (FK, **not null**) | 담당자 |
+| status | enum `VisitStatus` | `NOT_VISITED` / `FIRST_VISIT` … `FIFTH_VISIT` |
+| memo | TEXT | 자유 입력 |
+| visitedAt | LocalDate | 방문일 |
 
-**라벨 범위 (기획 확정)** — 핵심 라벨 + 상세 라벨을 함께 저장합니다.
+> ⚠️ `user_id` 가 `nullable = false` 라 **인증이 먼저 붙어야** 기록을 만들 수 있습니다.
 
-| 구분 | `type` |
+#### 기획서(`R-RABMND`)와의 간극
+
+현재 엔터티는 방문 **차수**만 담습니다. 기획이 요구하는 것과 축이 다릅니다.
+
+| 기획서 요구 | 현재 엔터티 |
 |---|---|
-| 핵심 | `contact_result` · `interest_item` · `reject_reason` · `next_action` |
-| 상세 | `budget` · `decision_maker` · `purchase_timing` · `competitor` |
+| 접촉 **결과** (관심 있음 / 거절 / 보류 / 부재) | 없음 — `status` 는 방문 차수 |
+| 접촉 **방식** (콜드콜 / 콜드메일 / 방문) | 없음 |
+| AI 요약 | 없음 |
+| 데이터 라벨 (관심 품목·거절 사유·예산·의사결정자 등) | 없음 |
+| 다음 접촉 예정일 | 없음 (`visitedAt` 은 과거 방문일) |
+| 검토 상태 (담당자 승인 후 저장) | 없음 |
 
-> 학습·분석용 데이터 사용 동의는 **조직 관리자가 조직 단위로** 관리합니다(기획 확정).
-
----
-
-### CrmSuggestion — AI 후속 접촉 제안
-
-기획서 `F-QBNKTD`. Shop 과 1:1 (가장 최근 제안만 유지).
-
-| 필드 | 타입 | 설명 |
-|---|---|---|
-| id | Long (PK) | |
-| shop | Shop (FK, unique) | |
-| historySummary | text | 누적 이력 요약 |
-| generatedAt | LocalDateTime | 제안 생성 시점 |
-| recommendedContactDate | LocalDate | 추천 접촉 시점 |
-| recommendedMethod | enum | `cold_call` / `cold_email` / `visit` |
-| coldCallScript | text (nullable) | |
-| coldEmailDraft | text (nullable) | |
-| needsMoreInfo | boolean | true 면 아래 질문으로 추가 정보 요청 |
-| followUpQuestions | text[] | |
-| used | boolean | 제안 활용 여부 |
-
-**기획 확정 사항**
-- AI 제안은 **실패 또는 보류 결과가 기록되면** 시작합니다.
-- 후속 접촉 시점은 고정 일수가 아니라 **영업 이력과 결과를 바탕으로 AI가 결정**합니다.
-- 정보가 부족하면 일반 제안 대신 **담당자에게 추가 질문을 요청**합니다.
-- 콜드메일 초안 제안 시 **발송 전 수신 동의 또는 적법한 발송 근거 확인을 안내**합니다.
-- 동일 잠재고객에 알림이 겹치면 **가장 최근 제안만 유지**합니다.
-- 팀장·관리자는 팀원의 영업 이력과 AI 제안 **요약만** 조회할 수 있습니다.
+AI 후속 제안의 시작 조건이 "**실패 또는 보류 결과**가 기록되면"인데, 방문 차수로는
+그 조건을 표현할 수 없습니다. 엔드포인트를 만들기 전에 이 축을 맞춰야 합니다 — 백엔드 협의 대상.
 
 ---
 
@@ -348,7 +323,7 @@ JSON 직렬화와 쿼리 파라미터에서는 `@JsonValue`/`@JsonCreator` 로 `
 | `address` | `addressJibun` | 지번만 존재 |
 | `industry` | `businessType` | |
 | `priorityScore` | `score` | **nullable** |
-| `priorityGrade` | `priorityGrade` | **값 체계 변경: S/A/B/C → `"1"`~`"4"`** (1이 최상위) |
+| `priorityGrade` | `priorityGrade` | 서버 값 동일(S/A/B/C). **화면 표기만 1~4** |
 | `sizeEstimate` (string) | `area` (**number**, ㎡) | 표시 문구는 프론트에서 생성 |
 | — | `phone` | **백엔드에만 있음** |
 | — | `gu`, `dong` | 주소가 분해되어 제공됨 |

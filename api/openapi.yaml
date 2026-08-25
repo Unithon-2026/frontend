@@ -39,9 +39,13 @@ info:
 
     ### 3. 우선순위 등급
 
-    등급은 **1~4** 이며 **1등급이 가장 높습니다**. 서버는 `"1"`~`"4"` 문자열로 내려주고,
-    필터 파라미터도 같은 값을 받습니다(`?priorityGrade=1`).
-    점수 구간은 1등급 ≥ 80, 2등급 ≥ 60, 3등급 ≥ 40, 그 미만이 4등급입니다.
+    서버 값은 **`S`/`A`/`B`/`C`** 입니다 (S가 최상위). 점수 구간은 S ≥ 80, A ≥ 60, B ≥ 40, 그 미만 C.
+
+
+    프론트엔드는 이 값을 **화면에서만 1~4 등급으로 바꿔 표시**합니다
+    (S→1등급, A→2등급, B→3등급, C→4등급). 요청 파라미터와 응답 파싱은 항상 서버 값 그대로입니다.
+    백엔드를 고치지 않고 표기만 바꾸기 위한 프론트 전용 매핑입니다.
+
 
     아직 계산되지 않은 매장은 `score` 와 `priorityGrade` 가 모두 `null` 입니다.
 
@@ -121,10 +125,11 @@ paths:
           required: false
           schema:
             type: string
-            enum: ["1", "2", "3", "4"]
+            enum: [S, A, B, C]
           description: >
-            우선순위 등급. **1등급이 가장 높습니다.**
-            1~4 외의 값이면 `COMMON400` 을 반환합니다.
+            우선순위 등급. 대소문자는 서버에서 무시합니다(`s` → `S`).
+            S/A/B/C 외의 값이면 `COMMON400` 을 반환합니다.
+            프론트 화면 표기는 1~4 등급이지만 **파라미터는 서버 값을 그대로** 보냅니다.
         - name: page
           in: query
           required: false
@@ -170,7 +175,7 @@ paths:
                       dong: 행당동
                       businessType: 식육(숯불구이)
                       score: 90
-                      priorityGrade: "1"
+                      priorityGrade: S
                   totalElements: 1
                   totalPages: 1
                   number: 0
@@ -180,14 +185,14 @@ paths:
                   last: true
                   empty: false
         "400":
-          description: "`priorityGrade` 값이 1~4 가 아님"
+          description: "`priorityGrade` 값이 S/A/B/C 가 아님"
           content:
             application/json:
               schema: { $ref: "#/components/schemas/ApiErrorResponse" }
               example:
                 success: false
                 code: COMMON400
-                message: "priorityGrade 값이 올바르지 않습니다: 9"
+                message: "priorityGrade 값이 올바르지 않습니다: X"
                 data: null
         "500": { $ref: "#/components/responses/InternalServerError" }
 
@@ -226,7 +231,7 @@ paths:
                   longitude: 127.0378
                   latitude: 37.5612
                   score: 92
-                  priorityGrade: "1"
+                  priorityGrade: S
         "404":
           description: 해당 id 의 매장 없음
           content:
@@ -546,8 +551,8 @@ paths:
           schema: { type: string, example: 한식 }
         - name: priorityGrade
           in: query
-          description: 우선순위 등급 필터 (1이 가장 높음)
-          schema: { type: string, enum: ["1", "2", "3", "4"] }
+          description: 우선순위 등급 필터. 서버 값(S/A/B/C)을 보냅니다.
+          schema: { $ref: "#/components/schemas/PriorityGrade" }
         - name: limit
           in: query
           description: 최대 마커 수. 미지정 시 500, 상한 1000.
@@ -834,18 +839,16 @@ paths:
 
   # ================================================================
   # 미구현 — AI CRM 후속 영업 관리 (기획서 R-RABMND)
+  # 엔터티(SalesActivity/User)는 있으나 컨트롤러·서비스가 없습니다.
   # ================================================================
   /api/v1/shops/{shopId}/sales-activities:
     get:
       tags: [SalesActivity]
       x-backend-status: planned
-      summary: "[미구현] 매장별 영업 시도 이력 조회"
+      summary: "[미구현] 매장별 영업 활동 이력 조회"
       description: >
-        F-QBNKTD. 잠재고객별 영업 시도 이력과 AI 요약을 최신순으로 조회합니다.
-
-
-        서버에 `SalesActivity` 엔터티가 없습니다. 담당자(User) 개념도 없어
-        `assigneeId` 를 채울 수 없습니다 — 인증 도입과 함께 구현되어야 합니다.
+        `SalesActivityRepository` 는 있지만 이를 노출하는 컨트롤러가 없습니다.
+        현재 엔터티 기준으로 방문 차수·메모·방문일을 최신순으로 돌려주는 형태를 가정합니다.
       parameters:
         - $ref: "#/components/parameters/ShopId"
       responses:
@@ -864,14 +867,10 @@ paths:
     post:
       tags: [SalesActivity]
       x-backend-status: planned
-      summary: "[미구현] 영업 시도 결과 기록"
+      summary: "[미구현] 영업 활동 기록"
       description: >
-        F-QBNKTD action. 영업 시도 직후 결과와 핵심 대화 내용을 기록합니다.
-        기획 확정 사항: 기록 입력은 **선택형 질문과 자유 입력을 함께** 제공합니다.
-
-
-        저장 시 AI가 요약과 데이터 라벨 후보를 추출하며,
-        **담당자가 검토·수정한 뒤에만 최종 저장**됩니다(F-FUPSJX 예외 처리 확정 사항).
+        방문 차수·메모·방문일을 기록합니다. `user_id` 가 `nullable = false` 라
+        **인증이 없으면 담당자를 채울 수 없습니다** — 로그인 도입과 함께 구현되어야 합니다.
       parameters:
         - $ref: "#/components/parameters/ShopId"
       requestBody:
@@ -890,46 +889,6 @@ paths:
                   - type: object
                     properties:
                       data: { $ref: "#/components/schemas/SalesActivity" }
-
-  /api/v1/shops/{shopId}/crm-suggestion:
-    get:
-      tags: [SalesActivity]
-      x-backend-status: planned
-      summary: "[미구현] AI 후속 접촉 제안 조회"
-      description: >
-        F-QBNKTD. 누적된 영업 이력을 바탕으로 다음 후속 접촉 시점·방식과
-        콜드콜 스크립트 또는 콜드메일 초안을 제안합니다.
-
-
-        기획 확정 사항:
-
-        - AI 제안은 **실패 또는 보류 결과가 기록되면** 시작합니다.
-
-        - 후속 접촉 시점은 고정값이 아니라 **영업 이력과 결과를 바탕으로 AI가 결정**합니다.
-
-        - 정보가 부족하면 일반 제안을 내지 않고 **담당자에게 추가 질문을 요청**합니다.
-
-        - 콜드메일 초안 제안 시 **발송 전 수신 동의 또는 적법한 발송 근거 확인을 안내**해야 합니다.
-
-        - 동일 매장에 알림이 겹치면 **가장 최근 제안만 유지**합니다.
-      parameters:
-        - $ref: "#/components/parameters/ShopId"
-      responses:
-        "200":
-          description: 성공
-          content:
-            application/json:
-              schema:
-                allOf:
-                  - $ref: "#/components/schemas/ApiResponseEnvelope"
-                  - type: object
-                    properties:
-                      data: { $ref: "#/components/schemas/CrmSuggestion" }
-        "404":
-          description: 제안을 만들 이력이 부족함 — 추가 질문 필요
-          content:
-            application/json:
-              schema: { $ref: "#/components/schemas/ApiErrorResponse" }
 
 components:
   parameters:
@@ -1025,22 +984,27 @@ components:
     # ---------------------------------------------------------------- Shop
     PriorityGrade:
       type: string
-      enum: ["1", "2", "3", "4"]
+      enum: [S, A, B, C]
       nullable: true
-      example: "1"
+      example: S
       description: >
-        우선순위 등급. **1등급이 가장 높고 4등급이 가장 낮습니다.**
+        우선순위 등급. `domain/priority/entity/PriorityGrade.java`.
 
 
-        점수 구간: 1등급 ≥ 80, 2등급 ≥ 60, 3등급 ≥ 40, 그 미만 4등급.
+        | 서버 값 | 점수 구간 | 프론트 표기 |
+        |---|---|---|
+        | `S` | 80 이상 | 1등급 · 최우선 |
+        | `A` | 60 이상 | 2등급 · 우선 |
+        | `B` | 40 이상 | 3등급 · 검토 |
+        | `C` | 40 미만 | 4등급 · 보류 |
+
+
+        **통신 값은 항상 `S`/`A`/`B`/`C` 입니다.** 프론트엔드는 화면에만 1~4 등급으로 바꿔 표시하며
+        (`WIRE_TO_GRADE` 매핑), 필터 파라미터에도 서버 값을 그대로 보냅니다.
 
 
         **우선순위 계산 전에는 `null`** 입니다 (`Shop.applyPriority()` 호출 전까지 `score` 와 함께 비어 있음).
         `POST /api/v1/shops/{shopId}/priority` 또는 `POST /api/v1/priorities/batch` 로 채웁니다.
-
-
-        서버 내부 enum 상수명은 `G1`~`G4` 이지만(자바 enum 은 숫자로 시작 불가),
-        JSON 과 쿼리 파라미터에서는 `"1"`~`"4"` 를 씁니다.
 
     ShopListItem:
       type: object
@@ -1256,77 +1220,56 @@ components:
         afterValue: { type: string, nullable: true }
         cause: { type: string, example: 인허가 갱신 }
 
-    # ------------------------------------------- AI CRM (미구현 · R-RABMND)
-    SalesActivityResult:
+    # ------------------------------- AI CRM (미구현 · 엔터티만 존재 · R-RABMND)
+    VisitStatus:
       type: string
-      enum: [contacted, no_answer, interested, on_hold, rejected]
-      description: 접촉 결과. 실패(rejected) 또는 보류(on_hold)면 AI 후속 제안이 시작됩니다.
+      enum: [NOT_VISITED, FIRST_VISIT, SECOND_VISIT, THIRD_VISIT, FOURTH_VISIT, FIFTH_VISIT]
+      description: >
+        `domain/salesactivity/entity/VisitStatus.java`.
+        **방문 "차수"** 를 나타냅니다 — 미방문, 1차~5차 방문.
 
-    ContactMethod:
-      type: string
-      enum: [cold_call, cold_email, visit]
 
-    SalesActivityCreate:
-      type: object
-      description: "[미구현] 영업 시도 결과 기록 요청. 선택형 + 자유 입력 병행."
-      required: [result, contactMethod]
-      properties:
-        result: { $ref: "#/components/schemas/SalesActivityResult" }
-        contactMethod: { $ref: "#/components/schemas/ContactMethod" }
-        attemptedAt: { type: string, format: date-time, description: 미지정 시 서버 시각 }
-        memo: { type: string, maxLength: 2000, description: 자유 입력. 핵심 대화 내용. }
-        nextContactDate: { type: string, format: date, nullable: true }
+        ⚠️ 기획서(`R-RABMND`)가 요구하는 **접촉 "결과"**(관심 있음 / 거절 / 보류 / 부재)와는
+        다른 축입니다. AI 후속 제안은 "실패 또는 보류 결과가 기록되면 시작"하는데,
+        이 enum 으로는 그 조건을 표현할 수 없습니다 — 백엔드 협의 필요.
 
-    DataLabel:
+    User:
       type: object
       description: >
-        [미구현] AI가 추출한 영업 데이터 라벨. 기획 확정 범위는
-        핵심 라벨(접촉 결과·관심 품목·거절/보류 사유·다음 행동) + 예산·의사결정자·구매 시기·경쟁사 입니다.
+        `domain/user/entity/User.java`. 엔터티만 있고 컨트롤러·서비스는 없습니다.
+
+
+        ⚠️ **비밀번호 컬럼이 없습니다.** 로그인·회원가입을 붙이려면 인증 필드부터 추가해야 합니다.
       properties:
-        type:
-          type: string
-          enum: [contact_result, interest_item, reject_reason, next_action, budget, decision_maker, purchase_timing, competitor]
-        value: { type: string, example: 한우 등심 }
-        evidence: { type: string, description: 추출 근거가 된 원문 조각 }
-        extractedBy: { type: string, enum: [ai, user] }
-        approved: { type: boolean, description: 담당자 승인 여부. false 면 저장되지 않습니다. }
-        savedAt: { type: string, format: date-time }
+        id: { type: integer, format: int64 }
+        name: { type: string, maxLength: 50 }
+        email: { type: string, maxLength: 100 }
+        phone: { type: string, maxLength: 30, nullable: true }
+        assignedRegionId:
+          type: integer
+          format: int64
+          nullable: true
+          description: 담당 구역. Region 엔터티가 없어 현재는 단순 Long 값입니다.
 
     SalesActivity:
       type: object
-      description: "[미구현] 영업 시도 이력 1건. 원문과 AI 요약은 저장일로부터 3년 보존(기획 확정)."
+      description: >
+        `domain/salesactivity/entity/SalesActivity.java`. **엔터티와 리포지토리만 있고
+        컨트롤러·서비스가 없어 호출 가능한 엔드포인트는 아직 없습니다.**
       properties:
         id: { type: integer, format: int64 }
-        shopId: { type: integer, format: int64 }
-        assigneeId: { type: integer, format: int64, description: 담당자. 서버에 User 개념이 없어 현재 채울 수 없음. }
-        attemptedAt: { type: string, format: date-time }
-        contactMethod: { $ref: "#/components/schemas/ContactMethod" }
-        result: { $ref: "#/components/schemas/SalesActivityResult" }
-        memo: { type: string, description: 담당자 원문 답변 }
-        aiSummary: { type: string, description: AI가 정리한 요약 }
-        reviewStatus: { type: string, enum: [pending_review, reviewed], description: 담당자 검토 상태 }
-        nextContactDate: { type: string, format: date, nullable: true }
-        labels:
-          type: array
-          items: { $ref: "#/components/schemas/DataLabel" }
+        shopId: { type: integer, format: int64, description: "`shop_id` (nullable=false)" }
+        userId: { type: integer, format: int64, description: "`user_id` (nullable=false)" }
+        status: { $ref: "#/components/schemas/VisitStatus" }
+        memo: { type: string, nullable: true, description: "TEXT 컬럼. 자유 입력." }
+        visitedAt: { type: string, format: date, nullable: true, description: 방문일 (LocalDate) }
 
-    CrmSuggestion:
+    SalesActivityCreate:
       type: object
-      description: "[미구현] AI CRM 후속 접촉 제안."
+      description: "[미구현] 영업 활동 기록 요청. 현재 엔터티 필드에 맞춘 최소 형태."
+      required: [status]
       properties:
-        shopId: { type: integer, format: int64 }
-        historySummary: { type: string, description: 누적 이력 요약 }
-        generatedAt: { type: string, format: date-time }
-        recommendedContactDate: { type: string, format: date }
-        recommendedMethod: { $ref: "#/components/schemas/ContactMethod" }
-        coldCallScript: { type: string, nullable: true }
-        coldEmailDraft: { type: string, nullable: true }
-        consentNotice:
-          type: string
-          nullable: true
-          description: 콜드메일 초안이 있을 때 발송 전 수신 동의·적법 근거 확인을 안내하는 문구.
-        needsMoreInfo: { type: boolean, description: true 면 아래 질문으로 담당자에게 추가 정보를 요청합니다. }
-        followUpQuestions:
-          type: array
-          items: { type: string }
-        used: { type: boolean, description: 제안 활용 여부 }
+        status: { $ref: "#/components/schemas/VisitStatus" }
+        memo: { type: string, nullable: true }
+        visitedAt: { type: string, format: date, nullable: true }
+

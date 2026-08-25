@@ -96,7 +96,7 @@
       "longitude": 127.0378,
       "latitude": 37.5612,
       "score": 90,
-      "priorityGrade": "1"
+      "priorityGrade": "S"
     },
     {
       "id": 2,
@@ -110,7 +110,7 @@
       "longitude": 127.0559,
       "latitude": 37.5445,
       "score": 80,
-      "priorityGrade": "1"
+      "priorityGrade": "S"
     },
     {
       "id": 3,
@@ -124,7 +124,7 @@
       "longitude": 127.0421,
       "latitude": 37.5447,
       "score": 100,
-      "priorityGrade": "1"
+      "priorityGrade": "S"
     },
     {
       "id": 4,
@@ -138,7 +138,7 @@
       "longitude": 127.0219,
       "latitude": 37.5479,
       "score": 70,
-      "priorityGrade": "2"
+      "priorityGrade": "A"
     },
     {
       "id": 5,
@@ -152,7 +152,7 @@
       "longitude": 127.0562,
       "latitude": 37.5423,
       "score": 50,
-      "priorityGrade": "3"
+      "priorityGrade": "B"
     },
     {
       "id": 6,
@@ -166,7 +166,7 @@
       "longitude": 127.0348,
       "latitude": 37.5502,
       "score": 80,
-      "priorityGrade": "1"
+      "priorityGrade": "S"
     },
     {
       "id": 7,
@@ -180,7 +180,7 @@
       "longitude": 127.0561,
       "latitude": 37.5448,
       "score": 45,
-      "priorityGrade": "3"
+      "priorityGrade": "B"
     },
     {
       "id": 8,
@@ -194,7 +194,7 @@
       "longitude": 127.0435,
       "latitude": 37.5668,
       "score": 80,
-      "priorityGrade": "1"
+      "priorityGrade": "S"
     },
     {
       "id": 9,
@@ -208,7 +208,7 @@
       "longitude": 127.0473,
       "latitude": 37.5471,
       "score": 65,
-      "priorityGrade": "2"
+      "priorityGrade": "A"
     },
     {
       "id": 10,
@@ -222,7 +222,7 @@
       "longitude": 127.0558,
       "latitude": 37.5441,
       "score": 30,
-      "priorityGrade": "4"
+      "priorityGrade": "C"
     },
     {
       "id": 11,
@@ -236,7 +236,7 @@
       "longitude": 127.0369,
       "latitude": 37.5573,
       "score": 35,
-      "priorityGrade": "4"
+      "priorityGrade": "C"
     },
     {
       "id": 12,
@@ -264,7 +264,7 @@
       "longitude": 127.0179,
       "latitude": 37.5401,
       "score": 65,
-      "priorityGrade": "2"
+      "priorityGrade": "A"
     },
     {
       "id": 14,
@@ -278,7 +278,7 @@
       "longitude": 127.0699,
       "latitude": 37.5405,
       "score": 90,
-      "priorityGrade": "1"
+      "priorityGrade": "S"
     },
     {
       "id": 15,
@@ -292,7 +292,7 @@
       "longitude": 127.0793,
       "latitude": 37.5573,
       "score": 70,
-      "priorityGrade": "2"
+      "priorityGrade": "A"
     },
     {
       "id": 16,
@@ -306,7 +306,7 @@
       "longitude": 127.0863,
       "latitude": 37.5885,
       "score": 65,
-      "priorityGrade": "2"
+      "priorityGrade": "A"
     }
   ],
   "industryWeights": [
