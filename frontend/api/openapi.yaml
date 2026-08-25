@@ -1,0 +1,1284 @@
+openapi: 3.0.3
+info:
+  title: MeetRoute API
+  version: 0.3.0
+  description: >
+    축산물 영업인을 위한 지역별 음식점 잠재고객 데이터베이스 및 영업 우선순위 관리 서비스 API.
+
+
+    **이 문서는 실제 백엔드(`unithon-2026/backend`, Spring Boot / `com.unithon.meetroute`)에 맞춰 갱신되었습니다.**
+    구현 완료된 엔드포인트와 아직 서버가 없는 기획 단계 엔드포인트를 분리해서 표기합니다.
+
+
+    - `x-backend-status: implemented` — 지금 호출 가능. 필드·파라미터는 서버 코드와 1:1로 맞춰져 있음.
+
+    - `x-backend-status: planned` — Manyfast 기능명세서에서 도출한 초안. **서버에 아직 없음.**
+      프론트에서 호출하면 404가 납니다. 설계 의도를 잃지 않도록 남겨두되, 구현 시 아래 공통 규약
+      (ApiResponse 봉투 / Spring Page / ErrorCode)을 반드시 따를 것.
+
+
+    ## 공통 규약
+
+
+    ### 1. 응답 봉투
+
+    모든 응답은 `ApiResponse<T>` 로 감싸집니다. 성공/실패 판정은 HTTP 상태코드가 아니라 `success` 필드로 합니다.
+
+    ```json
+    { "success": true,  "code": null,      "message": "OK", "data": { } }
+    { "success": false, "code": "SHOP4001", "message": "해당 매장을 찾을 수 없습니다.", "data": null }
+    ```
+
+
+    ### 2. 페이지네이션
+
+    목록은 Spring Data `Page` 를 그대로 직렬화합니다. **요청 `page` 는 0부터** 시작하고,
+    정렬은 `sort=필드명,방향` 형식입니다(예: `sort=score,desc`). 응답은 `items/total` 이 아니라
+    `content/totalElements/totalPages/number` 입니다.
+
+
+    ### 3. 우선순위 등급
+
+    서버 값은 **`S`/`A`/`B`/`C`** 입니다 (S가 최상위). 점수 구간은 S ≥ 80, A ≥ 60, B ≥ 40, 그 미만 C.
+
+
+    프론트엔드는 이 값을 **화면에서만 1~4 등급으로 바꿔 표시**합니다
+    (S→1등급, A→2등급, B→3등급, C→4등급). 요청 파라미터와 응답 파싱은 항상 서버 값 그대로입니다.
+    백엔드를 고치지 않고 표기만 바꾸기 위한 프론트 전용 매핑입니다.
+
+
+    아직 계산되지 않은 매장은 `score` 와 `priorityGrade` 가 모두 `null` 입니다.
+
+
+    ### 4. 인증
+
+    현재 백엔드 `SecurityConfig` 는 **전체 permitAll** 이라 토큰이 필요 없습니다.
+    (해커톤용 임시 설정이며 auth 담당자가 교체 예정) 인증이 붙기 전까지 `/auth/*` 는 planned 입니다.
+
+servers:
+  - url: http://localhost:8080
+    description: 로컬 백엔드 (Spring Boot 기본 포트, context-path 없음)
+
+tags:
+  - name: Shops
+    description: 매장(잠재고객) 조회. **구현 완료.**
+  - name: Auth
+    description: 인증. 미구현 — 현재 서버는 전체 permitAll.
+  - name: Regions
+    description: 영업 구역. 미구현 — 현재는 `gu` 문자열을 직접 넘김.
+  - name: Priority
+    description: 우선순위 점수 조회·재계산. **구현 완료.**
+  - name: Briefing
+    description: AI 영업 브리핑. **구현 완료** (Spring AI + Anthropic).
+  - name: Map
+    description: 지도 영역 내 매장 조회. **구현 완료.**
+  - name: Watchlist
+    description: 관심 목록. 미구현.
+  - name: Team
+    description: 팀 현황. 미구현.
+  - name: DataSources
+    description: 수집 출처 관리. 미구현.
+  - name: History
+    description: 변경 이력. 미구현.
+  - name: Admin
+    description: 관리자 기능. 미구현.
+  - name: SalesActivity
+    description: AI CRM 후속 영업(영업 이력·AI 제안·데이터 라벨). 미구현 — 기획서 R-RABMND.
+
+paths:
+  # ================================================================
+  # 구현 완료 — ShopController
+  # ================================================================
+  /api/v1/shops:
+    get:
+      tags: [Shops]
+      x-backend-status: implemented
+      x-backend-source: domain/shop/controller/ShopController.java#list
+      summary: 매장 목록 조회 (페이지)
+      description: >
+        구/업종/우선순위등급으로 필터링한 매장 목록을 페이지 단위로 반환합니다.
+        필터는 모두 선택이며 전달하지 않으면 전체 대상입니다.
+
+
+        정렬 기본값은 `score,desc`(우선순위 높은 순)입니다. 단, 우선순위 계산 배치가 아직 돌지 않은
+        매장은 `score` 가 null 이므로 목록에 null 점수 항목이 섞일 수 있습니다.
+
+
+        필터는 모두 **정확히 일치(equals)** 로 동작합니다. 부분 검색·사업자명 검색은 미구현입니다.
+      parameters:
+        - name: gu
+          in: query
+          required: false
+          schema: { type: string }
+          example: 성동구
+          description: 자치구명. DB에 저장된 값과 정확히 일치해야 합니다(부분 일치 아님).
+        - name: businessType
+          in: query
+          required: false
+          schema: { type: string }
+          example: 한식
+          description: >
+            위생업태명. 서울시 공공데이터 원본 텍스트를 그대로 저장하므로 enum 이 아닌 자유 문자열이며,
+            정확히 일치해야 합니다.
+        - name: priorityGrade
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [S, A, B, C]
+          description: >
+            우선순위 등급. 대소문자는 서버에서 무시합니다(`s` → `S`).
+            S/A/B/C 외의 값이면 `COMMON400` 을 반환합니다.
+            프론트 화면 표기는 1~4 등급이지만 **파라미터는 서버 값을 그대로** 보냅니다.
+        - name: page
+          in: query
+          required: false
+          schema: { type: integer, default: 0, minimum: 0 }
+          description: "**0부터 시작**합니다. (기존 초안의 1-based 와 다름)"
+        - name: size
+          in: query
+          required: false
+          schema: { type: integer, default: 20, minimum: 1 }
+          description: 페이지당 개수. 서버 기본값 20.
+        - name: sort
+          in: query
+          required: false
+          schema:
+            type: array
+            items: { type: string }
+            default: ["score,desc"]
+          style: form
+          explode: true
+          description: >
+            `필드명,asc|desc` 형식. 여러 개면 `sort` 파라미터를 반복 전송합니다.
+            정렬 가능한 필드는 Shop 엔터티 속성명(`score`, `name`, `gu`, `dong`, `businessType`, `area` 등).
+      responses:
+        "200":
+          description: 성공. 조건에 맞는 매장이 없으면 `data.content` 가 빈 배열입니다.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiResponseEnvelope"
+                  - type: object
+                    properties:
+                      data: { $ref: "#/components/schemas/PageOfShopListItem" }
+              example:
+                success: true
+                code: null
+                message: OK
+                data:
+                  content:
+                    - id: 1
+                      name: 왕십리 화로구이
+                      gu: 성동구
+                      dong: 행당동
+                      businessType: 식육(숯불구이)
+                      score: 90
+                      priorityGrade: S
+                  totalElements: 1
+                  totalPages: 1
+                  number: 0
+                  size: 20
+                  numberOfElements: 1
+                  first: true
+                  last: true
+                  empty: false
+        "400":
+          description: "`priorityGrade` 값이 S/A/B/C 가 아님"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiErrorResponse" }
+              example:
+                success: false
+                code: COMMON400
+                message: "priorityGrade 값이 올바르지 않습니다: X"
+                data: null
+        "500": { $ref: "#/components/responses/InternalServerError" }
+
+  /api/v1/shops/{shopId}:
+    get:
+      tags: [Shops]
+      x-backend-status: implemented
+      x-backend-source: domain/shop/controller/ShopController.java#getDetail
+      summary: 매장 상세 조회
+      parameters:
+        - $ref: "#/components/parameters/ShopId"
+      responses:
+        "200":
+          description: 성공
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiResponseEnvelope"
+                  - type: object
+                    properties:
+                      data: { $ref: "#/components/schemas/ShopDetail" }
+              example:
+                success: true
+                code: null
+                message: OK
+                data:
+                  id: 1
+                  name: 왕십리 화로구이
+                  addressJibun: 서울특별시 성동구 행당동 128-3
+                  gu: 성동구
+                  dong: 행당동
+                  phone: "02-2299-1234"
+                  businessType: 한식
+                  area: 158.4
+                  longitude: 127.0378
+                  latitude: 37.5612
+                  score: 92
+                  priorityGrade: S
+        "404":
+          description: 해당 id 의 매장 없음
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiErrorResponse" }
+              example:
+                success: false
+                code: SHOP4001
+                message: 해당 매장을 찾을 수 없습니다.
+                data: null
+        "500": { $ref: "#/components/responses/InternalServerError" }
+
+  # ================================================================
+  # 미구현 (planned) — 아래는 전부 서버에 없습니다. 호출하면 404.
+  # Manyfast 기능명세서 기반 초안이며, 구현 시 위 공통 규약을 따를 것.
+  # ================================================================
+  /api/v1/auth/login:
+    post:
+      tags: [Auth]
+      x-backend-status: planned
+      summary: "[미구현] 로그인"
+      description: >
+        현재 백엔드 `SecurityConfig` 는 전체 permitAll 이며 로그인 엔드포인트가 없습니다.
+        인증 도입 전까지 프론트는 토큰 없이 호출합니다.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password]
+              properties:
+                email: { type: string, format: email }
+                password: { type: string, format: password }
+      responses:
+        "200":
+          description: 성공
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiResponseEnvelope"
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          accessToken: { type: string }
+                          user: { $ref: "#/components/schemas/User" }
+
+  /api/v1/auth/me:
+    get:
+      tags: [Auth]
+      x-backend-status: planned
+      summary: "[미구현] 현재 사용자 정보 (역할·담당 구역 포함)"
+      responses:
+        "200":
+          description: 성공
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiResponseEnvelope"
+                  - type: object
+                    properties:
+                      data: { $ref: "#/components/schemas/User" }
+
+  /api/v1/regions:
+    get:
+      tags: [Regions]
+      x-backend-status: planned
+      summary: "[미구현] 선택 가능한 시·군·구 및 담당 영업 구역 목록"
+      description: >
+        F-HNLXDA. 서버에 Region 엔터티가 없습니다. 현재 프론트는 `GET /api/v1/shops` 를
+        `size=1000&sort=id,asc` 로 최대 5장 훑어 실제로 존재하는 `gu` / `businessType` 값과
+        건수를 뽑아 드롭다운을 채우고(결과는 브라우저에 24시간 캐시),
+        `GET /api/v1/shops?gu=` 에 구 이름 문자열을 그대로 넘깁니다.
+        이 엔드포인트가 생기면 스캔을 이 호출로 대체합니다.
+
+
+        구현 시 주의: 백엔드 Shop 은 지역 **코드**가 아니라 `gu`/`dong` **문자열**을 들고 있으므로,
+        Region.code(`11200`) 를 쓰려면 Shop 쪽에 코드 컬럼을 추가하거나 코드↔이름 매핑이 필요합니다.
+      responses:
+        "200":
+          description: 성공
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiResponseEnvelope"
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          assignedRegions:
+                            type: array
+                            items: { $ref: "#/components/schemas/Region" }
+                          allRegions:
+                            type: array
+                            items: { $ref: "#/components/schemas/Region" }
+
+  # ================================================================
+  # 구현 완료 — PriorityController
+  # ================================================================
+  /api/v1/shops/{shopId}/priority:
+    get:
+      tags: [Priority]
+      x-backend-status: implemented
+      summary: 매장 우선순위 조회
+      description: >
+        이미 계산되어 저장된 매장의 우선순위 점수와 등급을 조회합니다.
+        아직 계산된 값이 없으면 404 + `PRIORITY4001` 입니다.
+
+
+        점수/등급 **값 자체는 목록·상세 응답의 `score`/`priorityGrade` 에도 들어 있습니다**
+        (`Shop` 에 비정규화 캐싱). 이 엔드포인트는 `calculatedAt`(산정 시각)까지 필요할 때 씁니다.
+      parameters:
+        - $ref: "#/components/parameters/ShopId"
+      responses:
+        "200":
+          description: 성공
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiResponseEnvelope"
+                  - type: object
+                    properties:
+                      data: { $ref: "#/components/schemas/PriorityResponse" }
+        "404":
+          description: "매장 없음 `SHOP4001` / 아직 계산된 우선순위 없음 `PRIORITY4001`"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiErrorResponse" }
+    post:
+      tags: [Priority]
+      x-backend-status: implemented
+      summary: 매장 우선순위 계산
+      description: >
+        해당 매장의 우선순위를 다시 계산해 저장하고 결과를 반환합니다.
+        `Priority` 행이 없으면 새로 만들고, 있으면 갱신합니다.
+        동시에 `Shop.score` / `Shop.priorityGrade` 캐시도 갱신됩니다.
+
+
+        요청 본문은 없습니다. 산식은 `PriorityScoreCalculator` 참고 (업태 0~50 + 면적 0~30 + 연락처 0/20).
+      parameters:
+        - $ref: "#/components/parameters/ShopId"
+      responses:
+        "200":
+          description: 성공
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiResponseEnvelope"
+                  - type: object
+                    properties:
+                      data: { $ref: "#/components/schemas/PriorityResponse" }
+        "404":
+          description: "매장 없음 — `SHOP4001`"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiErrorResponse" }
+
+  # ================================================================
+  # 구현 완료 — PriorityBatchController
+  # ================================================================
+  /api/v1/priorities/batch:
+    post:
+      tags: [Priority, Admin]
+      x-backend-status: implemented
+      summary: 전체 매장 우선순위 일괄 계산
+      description: >
+        등록된 모든 매장의 우선순위를 페이지 단위로 일괄 계산해 저장합니다.
+        **매장 수가 많으면 응답까지 수 분이 걸릴 수 있습니다.** 요청 본문은 없습니다.
+
+
+        현재 권한 체크가 없습니다(전체 permitAll). 역할이 도입되면 관리자 전용이 되어야 합니다.
+      responses:
+        "200":
+          description: 성공
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiResponseEnvelope"
+                  - type: object
+                    properties:
+                      data: { $ref: "#/components/schemas/PriorityBatchResponse" }
+
+  # ================================================================
+  # 구현 완료 — ShopController (AI 브리핑)
+  # ================================================================
+  /api/v1/shops/{shopId}/briefing:
+    post:
+      tags: [Briefing]
+      x-backend-status: implemented
+      summary: AI 영업 브리핑 생성
+      description: >
+        매장의 인허가 데이터를 바탕으로 Anthropic API를 **1회 호출**해 영업 접근 방법을 요약한
+        브리핑 텍스트를 생성합니다. 요청 본문은 없습니다.
+
+
+        **GET이 아니라 POST 입니다** — 호출마다 외부 AI 비용이 발생하므로 캐시되지 않습니다.
+        서버에 `ANTHROPIC_API_KEY` 가 없거나 호출이 실패하면 HTTP 502 + `SHOP5001`.
+      parameters:
+        - $ref: "#/components/parameters/ShopId"
+      responses:
+        "200":
+          description: 성공
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiResponseEnvelope"
+                  - type: object
+                    properties:
+                      data: { $ref: "#/components/schemas/BriefingResponse" }
+        "404":
+          description: "매장 없음 — `SHOP4001`"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiErrorResponse" }
+        "502":
+          description: "AI 브리핑 생성 실패 — `SHOP5001`"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiErrorResponse" }
+
+  /api/v1/admin/priority/recompute:
+    post:
+      tags: [Priority, Admin]
+      x-backend-status: planned
+      summary: "[미구현] 점수 재산정 요청 (관리자)"
+      description: F-JZGEPZ trigger. 조직 관리자만. 서버에 역할(Role) 개념 자체가 아직 없습니다.
+      responses:
+        "202": { description: 재산정 작업 등록됨 }
+
+  /api/v1/admin/industry-weights:
+    get:
+      tags: [Priority, Admin]
+      x-backend-status: planned
+      summary: "[미구현] 업종별 가중치 조회"
+      responses:
+        "200":
+          description: 성공
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiResponseEnvelope"
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items: { $ref: "#/components/schemas/IndustryWeight" }
+    put:
+      tags: [Priority, Admin]
+      x-backend-status: planned
+      summary: "[미구현] 업종별 가중치 수정 (조직 관리자만)"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: array
+              items: { $ref: "#/components/schemas/IndustryWeight" }
+      responses:
+        "200": { description: 저장됨 }
+
+  # ================================================================
+  # 구현 완료 — ShopController (지도)
+  # ================================================================
+  /api/v1/shops/map:
+    get:
+      tags: [Map]
+      x-backend-status: implemented
+      summary: 지도 영역 내 매장 조회
+      description: >
+        F-LQMMWG / F-OFNSAT. 지도 화면에 보이는 영역(bounding box) 안의 매장을
+        우선순위 점수 내림차순으로 최대 `limit` 개까지 조회합니다.
+
+
+        프론트는 **카카오 지도 JavaScript SDK** 를 쓰며, 지도 이동·확대가 끝날 때(`idle`)
+        `map.getBounds()` 의 남서/북동 좌표를 그대로 이 파라미터에 넣어 재조회합니다.
+        남서 → `minLatitude`/`minLongitude`, 북동 → `maxLatitude`/`maxLongitude`.
+
+
+        목록(`GET /api/v1/shops`)과 달리 **좌표를 포함한 마커 DTO**(`ShopMapMarkerResponse`)를 주고,
+        `Page` 가 아니라 **평평한 배열**을 돌려줍니다.
+
+
+        좌표가 `null` 인 매장은 bounding box 조건에서 자연히 빠지므로 응답에 포함되지 않습니다.
+        "좌표 결측이라 지도에 못 그린 건" 목록이 필요하면 별도 엔드포인트가 있어야 합니다.
+      parameters:
+        - name: minLatitude
+          in: query
+          required: true
+          description: 지도 영역 남쪽 경계 (카카오 `getBounds().getSouthWest().getLat()`)
+          schema: { type: number, format: double, example: 37.41 }
+        - name: maxLatitude
+          in: query
+          required: true
+          description: 지도 영역 북쪽 경계
+          schema: { type: number, format: double, example: 37.70 }
+        - name: minLongitude
+          in: query
+          required: true
+          description: 지도 영역 서쪽 경계
+          schema: { type: number, format: double, example: 126.76 }
+        - name: maxLongitude
+          in: query
+          required: true
+          description: 지도 영역 동쪽 경계 (카카오 `getBounds().getNorthEast().getLng()`)
+          schema: { type: number, format: double, example: 127.19 }
+        - name: gu
+          in: query
+          description: 자치구 완전일치 필터
+          schema: { type: string, example: 성동구 }
+        - name: businessType
+          in: query
+          description: 위생업태명 완전일치 필터
+          schema: { type: string, example: 한식 }
+        - name: priorityGrade
+          in: query
+          description: 우선순위 등급 필터. 서버 값(S/A/B/C)을 보냅니다.
+          schema: { $ref: "#/components/schemas/PriorityGrade" }
+        - name: limit
+          in: query
+          description: 최대 마커 수. 미지정 시 500, 상한 1000.
+          schema: { type: integer, default: 500, maximum: 1000 }
+      responses:
+        "200":
+          description: 성공
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiResponseEnvelope"
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items: { $ref: "#/components/schemas/ShopMapMarkerResponse" }
+        "400":
+          description: >
+            `COMMON400` — bounding box 좌표 누락, `minLatitude > maxLatitude`,
+            `minLongitude > maxLongitude`, 또는 `priorityGrade` 값 오류.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiErrorResponse" }
+
+  /api/v1/watchlist:
+    get:
+      tags: [Watchlist]
+      x-backend-status: planned
+      summary: "[미구현] 내 관심 목록"
+      description: >
+        F-AQAMCL. 서버에 WatchlistEntry 엔터티와 사용자 개념이 모두 없습니다.
+        프로토타입의 저장/메모/영업상태는 현재 브라우저 `localStorage`(`meetroute.watchlist.v1`)
+        에만 존재합니다. 기기 간 공유가 되지 않으므로 이 엔드포인트가 생기면 마이그레이션이 필요합니다.
+      parameters:
+        - name: salesStatus
+          in: query
+          schema:
+            type: string
+            enum: [to_contact, visited, proposed, on_hold]
+        - name: gu
+          in: query
+          schema: { type: string }
+        - name: priorityGrade
+          in: query
+          schema: { $ref: "#/components/schemas/PriorityGrade" }
+      responses:
+        "200":
+          description: 성공
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiResponseEnvelope"
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items: { $ref: "#/components/schemas/WatchlistEntry" }
+    post:
+      tags: [Watchlist]
+      x-backend-status: planned
+      summary: "[미구현] 관심 목록에 저장"
+      description: 동일 매장 재저장 시 신규 생성 대신 기존 항목 반환(exceptions 추천값).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [shopId]
+              properties:
+                shopId: { type: integer, format: int64 }
+      responses:
+        "200":
+          description: 이미 저장되어 있어 기존 항목 반환
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiResponseEnvelope"
+                  - type: object
+                    properties:
+                      data: { $ref: "#/components/schemas/WatchlistEntry" }
+        "201":
+          description: 신규 저장
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiResponseEnvelope"
+                  - type: object
+                    properties:
+                      data: { $ref: "#/components/schemas/WatchlistEntry" }
+
+  /api/v1/watchlist/{entryId}:
+    patch:
+      tags: [Watchlist]
+      x-backend-status: planned
+      summary: "[미구현] 영업 상태·메모 수정"
+      description: 메모 최대 1,000자(rules 추천값).
+      parameters:
+        - name: entryId
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                salesStatus:
+                  type: string
+                  enum: [to_contact, visited, proposed, on_hold]
+                memo:
+                  type: string
+                  maxLength: 1000
+      responses:
+        "200":
+          description: 성공
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiResponseEnvelope"
+                  - type: object
+                    properties:
+                      data: { $ref: "#/components/schemas/WatchlistEntry" }
+    delete:
+      tags: [Watchlist]
+      x-backend-status: planned
+      summary: "[미구현] 관심 목록에서 제거"
+      parameters:
+        - name: entryId
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "204": { description: 삭제됨 }
+
+  /api/v1/team/watchlist:
+    get:
+      tags: [Team]
+      x-backend-status: planned
+      summary: "[미구현] 팀 영업 대상 현황 (팀장·관리자 전용)"
+      description: F-IKACSI. 담당자별 기본 분류. 두 명 이상이 동일 매장 저장 시 duplicate=true.
+      parameters:
+        - name: groupBy
+          in: query
+          schema:
+            type: string
+            enum: [member, salesStatus, region]
+            default: member
+      responses:
+        "200":
+          description: 성공
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiResponseEnvelope"
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          summary:
+                            type: object
+                            properties:
+                              totalSaved: { type: integer }
+                              duplicateCount: { type: integer }
+                              activeMembers: { type: integer }
+                          rows:
+                            type: array
+                            items: { $ref: "#/components/schemas/TeamRow" }
+
+  /api/v1/admin/data-sources:
+    get:
+      tags: [DataSources, Admin]
+      x-backend-status: planned
+      summary: "[미구현] 데이터 출처 및 수집 일정/상태 (관리자)"
+      responses:
+        "200":
+          description: 성공
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiResponseEnvelope"
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items: { $ref: "#/components/schemas/DataSource" }
+    post:
+      tags: [DataSources, Admin]
+      x-backend-status: planned
+      summary: "[미구현] 데이터 출처 등록"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/DataSourceInput" }
+      responses:
+        "201": { description: 등록됨 }
+
+  /api/v1/admin/dedup-candidates:
+    get:
+      tags: [DataSources, Admin]
+      x-backend-status: planned
+      summary: "[미구현] 중복 통합 검토 대기 목록"
+      description: F-EKKAGY. 자동 판정 기준은 사업자등록번호 우선(rules 추천값).
+      responses:
+        "200":
+          description: 성공
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiResponseEnvelope"
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items: { $ref: "#/components/schemas/DedupCandidate" }
+
+  /api/v1/shops/{shopId}/history:
+    get:
+      tags: [History]
+      x-backend-status: planned
+      summary: "[미구현] 매장 변경 이력 (팀장·관리자 전용)"
+      description: F-APVXVM. 기본 조회 기간 최근 1년.
+      parameters:
+        - $ref: "#/components/parameters/ShopId"
+        - name: from
+          in: query
+          schema: { type: string, format: date }
+        - name: to
+          in: query
+          schema: { type: string, format: date }
+      responses:
+        "200":
+          description: 성공. 이력 없으면 빈 배열.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiResponseEnvelope"
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items: { $ref: "#/components/schemas/HistoryEntry" }
+
+  /api/v1/admin/shops/{shopId}/status:
+    patch:
+      tags: [History, Admin]
+      x-backend-status: planned
+      summary: "[미구현] 매장 데이터 상태 변경 (관리자)"
+      description: >
+        F-QLFQNG. 정상/폐업/이전확인필요/중복통합. 변경 사유 필수.
+
+
+        **주의**: 백엔드 `Shop` 엔터티에 `dataStatus` 컬럼 자체가 없습니다.
+        "폐업 제외" 필터(기존 초안의 `includeClosed`)는 이 컬럼이 생기기 전까지 구현 불가라
+        프론트 필터에서 제거했습니다.
+      parameters:
+        - $ref: "#/components/parameters/ShopId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [dataStatus, reason]
+              properties:
+                dataStatus:
+                  type: string
+                  enum: [active, closed, relocation_check, merged]
+                reason: { type: string }
+      responses:
+        "200": { description: 변경됨 }
+
+  # ================================================================
+  # 미구현 — AI CRM 후속 영업 관리 (기획서 R-RABMND)
+  # 엔터티(SalesActivity/User)는 있으나 컨트롤러·서비스가 없습니다.
+  # ================================================================
+  /api/v1/shops/{shopId}/sales-activities:
+    get:
+      tags: [SalesActivity]
+      x-backend-status: planned
+      summary: "[미구현] 매장별 영업 활동 이력 조회"
+      description: >
+        `SalesActivityRepository` 는 있지만 이를 노출하는 컨트롤러가 없습니다.
+        현재 엔터티 기준으로 방문 차수·메모·방문일을 최신순으로 돌려주는 형태를 가정합니다.
+      parameters:
+        - $ref: "#/components/parameters/ShopId"
+      responses:
+        "200":
+          description: 성공
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiResponseEnvelope"
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items: { $ref: "#/components/schemas/SalesActivity" }
+    post:
+      tags: [SalesActivity]
+      x-backend-status: planned
+      summary: "[미구현] 영업 활동 기록"
+      description: >
+        방문 차수·메모·방문일을 기록합니다. `user_id` 가 `nullable = false` 라
+        **인증이 없으면 담당자를 채울 수 없습니다** — 로그인 도입과 함께 구현되어야 합니다.
+      parameters:
+        - $ref: "#/components/parameters/ShopId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/SalesActivityCreate" }
+      responses:
+        "200":
+          description: 성공
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiResponseEnvelope"
+                  - type: object
+                    properties:
+                      data: { $ref: "#/components/schemas/SalesActivity" }
+
+components:
+  parameters:
+    ShopId:
+      name: shopId
+      in: path
+      required: true
+      schema: { type: integer, format: int64 }
+      description: 매장 PK. 백엔드가 `Long` 이므로 **숫자**입니다(기존 초안의 `L001` 문자열 아님).
+
+  responses:
+    InternalServerError:
+      description: "서버 내부 오류 — `COMMON500`"
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ApiErrorResponse" }
+
+  schemas:
+    # ---------------------------------------------------------------- 공통 봉투
+    ApiResponseEnvelope:
+      type: object
+      description: >
+        global/response/ApiResponse.java. 모든 응답의 공통 껍데기.
+        성공 시 `code` 는 null, 실패 시 `data` 는 null 입니다.
+      required: [success, message]
+      properties:
+        success: { type: boolean }
+        code:
+          type: string
+          nullable: true
+          description: 실패 시에만 채워지는 에러 코드. 성공 시 null.
+        message: { type: string, example: OK }
+
+    ApiErrorResponse:
+      type: object
+      description: GlobalExceptionHandler 가 생성하는 실패 응답.
+      properties:
+        success: { type: boolean, enum: [false] }
+        code:
+          type: string
+          enum: [COMMON400, COMMON404, COMMON500, SHOP4001, PRIORITY4001, SHOP5001]
+          description: >
+            global/exception/ErrorCode.java 와 1:1.
+
+            `COMMON400` 잘못된 요청(400) /
+            `COMMON404` 리소스 없음(404) /
+            `COMMON500` 서버 오류(500) /
+            `SHOP4001` 매장 없음(404) /
+            `PRIORITY4001` 계산된 우선순위 없음(404) /
+            `SHOP5001` AI 브리핑 실패(502)
+        message: { type: string }
+        data:
+          nullable: true
+          description: 실패 시 항상 null.
+
+    # ---------------------------------------------------------------- 페이지
+    SortInfo:
+      type: object
+      properties:
+        sorted: { type: boolean }
+        unsorted: { type: boolean }
+        empty: { type: boolean }
+
+    PageOfShopListItem:
+      type: object
+      description: >
+        Spring Data `Page<ShopListItemResponse>` 직렬화 결과.
+        기존 초안의 `items/page/pageSize/total` 과 필드명이 다르니 주의.
+      properties:
+        content:
+          type: array
+          items: { $ref: "#/components/schemas/ShopListItem" }
+        totalElements: { type: integer, description: 전체 건수 }
+        totalPages: { type: integer }
+        number: { type: integer, description: "현재 페이지 번호. **0부터 시작.**" }
+        size: { type: integer, description: 페이지당 개수 }
+        numberOfElements: { type: integer, description: 이번 페이지의 실제 건수 }
+        first: { type: boolean }
+        last: { type: boolean }
+        empty: { type: boolean }
+        sort: { $ref: "#/components/schemas/SortInfo" }
+        pageable:
+          type: object
+          description: Spring 직렬화 모드에 따라 생략될 수 있으므로 의존하지 말 것.
+          properties:
+            pageNumber: { type: integer }
+            pageSize: { type: integer }
+            offset: { type: integer }
+            paged: { type: boolean }
+            unpaged: { type: boolean }
+            sort: { $ref: "#/components/schemas/SortInfo" }
+
+    # ---------------------------------------------------------------- Shop
+    PriorityGrade:
+      type: string
+      enum: [S, A, B, C]
+      nullable: true
+      example: S
+      description: >
+        우선순위 등급. `domain/priority/entity/PriorityGrade.java`.
+
+
+        | 서버 값 | 점수 구간 | 프론트 표기 |
+        |---|---|---|
+        | `S` | 80 이상 | 1등급 · 최우선 |
+        | `A` | 60 이상 | 2등급 · 우선 |
+        | `B` | 40 이상 | 3등급 · 검토 |
+        | `C` | 40 미만 | 4등급 · 보류 |
+
+
+        **통신 값은 항상 `S`/`A`/`B`/`C` 입니다.** 프론트엔드는 화면에만 1~4 등급으로 바꿔 표시하며
+        (`WIRE_TO_GRADE` 매핑), 필터 파라미터에도 서버 값을 그대로 보냅니다.
+
+
+        **우선순위 계산 전에는 `null`** 입니다 (`Shop.applyPriority()` 호출 전까지 `score` 와 함께 비어 있음).
+        `POST /api/v1/shops/{shopId}/priority` 또는 `POST /api/v1/priorities/batch` 로 채웁니다.
+
+    ShopListItem:
+      type: object
+      description: domain/shop/dto/ShopListItemResponse.java
+      properties:
+        id: { type: integer, format: int64 }
+        name: { type: string, description: 사업장명 }
+        gu: { type: string, description: 자치구, example: 성동구 }
+        dong: { type: string, description: 법정동, example: 행당동 }
+        businessType:
+          type: string
+          description: >
+            위생업태명. 서울시 공공데이터 원본 텍스트라 값의 종류를 사전에 알 수 없어
+            백엔드도 enum 이 아닌 String 으로 저장합니다.
+          example: 한식
+        score:
+          type: integer
+          nullable: true
+          description: 우선순위 점수. **미계산 시 null.**
+        priorityGrade: { $ref: "#/components/schemas/PriorityGrade" }
+
+    ShopDetail:
+      type: object
+      description: >
+        domain/shop/dto/ShopDetailResponse.java.
+        목록 항목에 주소·연락처·면적·좌표가 추가됩니다.
+      properties:
+        id: { type: integer, format: int64 }
+        name: { type: string }
+        addressJibun:
+          type: string
+          description: 지번 주소. 도로명 주소 컬럼은 백엔드에 없습니다.
+        gu: { type: string }
+        dong: { type: string }
+        phone: { type: string, nullable: true }
+        businessType: { type: string }
+        area:
+          type: number
+          nullable: true
+          description: >
+            시설 면적(㎡). `BigDecimal` 이라 JSON number 로 내려옵니다.
+            기존 초안의 `sizeEstimate`("중형 (48석)") 같은 문자열이 아니라 **숫자**이므로
+            표시 문구는 프론트에서 구간을 나눠 만들어야 합니다.
+        longitude: { type: number, nullable: true, description: 경도. null 이면 지도 미표시. }
+        latitude: { type: number, nullable: true, description: 위도. null 이면 지도 미표시. }
+        score: { type: integer, nullable: true }
+        priorityGrade: { $ref: "#/components/schemas/PriorityGrade" }
+
+    # ---------------------------------------------------------------- planned 전용 스키마
+    User:
+      type: object
+      description: "[미구현] 서버에 User 엔터티 없음."
+      properties:
+        id: { type: string }
+        name: { type: string }
+        email: { type: string, format: email }
+        role:
+          type: string
+          enum: [sales_rep, team_lead, org_admin]
+          description: 영업 담당자 / 영업팀장 / 조직 관리자
+        assignedRegions:
+          type: array
+          items: { $ref: "#/components/schemas/Region" }
+
+    Region:
+      type: object
+      description: "[미구현] 서버는 지역 코드가 아니라 `gu`/`dong` 문자열을 사용합니다."
+      properties:
+        code: { type: string, example: "11200" }
+        name: { type: string, example: 서울 성동구 }
+        gu: { type: string, example: 성동구, description: "`GET /api/v1/shops?gu=` 에 넘길 값" }
+        assigned: { type: boolean, description: 현재 사용자에게 배정된 구역인지 }
+
+    PriorityResponse:
+      type: object
+      description: domain/priority/dto/PriorityResponse.java
+      properties:
+        shopId: { type: integer, format: int64, example: 1 }
+        score:
+          type: integer
+          minimum: 0
+          maximum: 100
+          example: 90
+          description: >
+            업태 가중치(0~50) + 시설 면적(0~30) + 연락처 보유(0 또는 20).
+            산식은 `PriorityScoreCalculator` 참고.
+        grade: { $ref: "#/components/schemas/PriorityGrade" }
+        calculatedAt:
+          type: string
+          format: date-time
+          example: "2026-08-25T09:30:00"
+          description: 산정 시각. `Priority.calculatedAt`.
+      required: [shopId, score, grade]
+
+    PriorityBatchResponse:
+      type: object
+      description: domain/priority/dto/PriorityBatchResponse.java
+      properties:
+        totalShopCount: { type: integer, format: int64, example: 2143, description: 대상 매장 총 건수 }
+        processedCount: { type: integer, format: int64, example: 2143, description: 실제 계산·저장된 건수 }
+        elapsedMillis: { type: integer, format: int64, example: 18432, description: 소요 시간(ms) }
+
+    BriefingResponse:
+      type: object
+      description: domain/shop/briefing/dto/BriefingResponse.java
+      properties:
+        shopId: { type: integer, format: int64 }
+        briefing:
+          type: string
+          description: AI가 생성한 영업 접근 브리핑 텍스트. 서식 없는 평문입니다.
+          example: 왕십리 화로구이는 158㎡ 규모의 숯불구이 전문점으로 육류 소비량이 큽니다. 점심 피크를 피해 오후에 방문해 등심·삼겹 단가표를 제시하는 방법을 권합니다.
+
+    ShopMapMarkerResponse:
+      type: object
+      description: domain/shop/dto/ShopMapMarkerResponse.java — 목록 DTO와 달리 좌표를 포함합니다.
+      properties:
+        id: { type: integer, format: int64 }
+        name: { type: string, example: 왕십리 화로구이 }
+        businessType: { type: string, nullable: true, example: 식육(숯불구이) }
+        addressJibun: { type: string, nullable: true, example: 서울특별시 성동구 행당동 128-3 }
+        phone: { type: string, nullable: true, example: 02-2299-1234 }
+        latitude: { type: number, format: double, nullable: true, example: 37.5612 }
+        longitude: { type: number, format: double, nullable: true, example: 127.0378 }
+        score: { type: integer, nullable: true, example: 90 }
+        priorityGrade: { $ref: "#/components/schemas/PriorityGrade" }
+
+    IndustryWeight:
+      type: object
+      description: "[미구현] 점수 계산 입력. 값은 mock/industry-weights.json 참고."
+      properties:
+        businessType: { type: string, example: 한식 }
+        weight: { type: integer, minimum: 0, maximum: 100, example: 96 }
+
+    WatchlistEntry:
+      type: object
+      description: "[미구현] 서버에 엔터티·사용자 개념 모두 없음."
+      properties:
+        entryId: { type: string }
+        userId: { type: string }
+        shopId: { type: integer, format: int64 }
+        shop: { $ref: "#/components/schemas/ShopListItem" }
+        salesStatus:
+          type: string
+          enum: [to_contact, visited, proposed, on_hold]
+        memo: { type: string, maxLength: 1000 }
+        savedAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+
+    TeamRow:
+      type: object
+      description: "[미구현]"
+      properties:
+        memberId: { type: string }
+        memberName: { type: string }
+        shopId: { type: integer, format: int64 }
+        businessName: { type: string }
+        businessType: { type: string }
+        priorityGrade: { $ref: "#/components/schemas/PriorityGrade" }
+        salesStatus:
+          type: string
+          enum: [to_contact, visited, proposed, on_hold]
+        updatedAt: { type: string, format: date }
+        duplicate:
+          type: boolean
+          description: 동일 매장을 2인 이상 저장 시 true
+
+    DataSource:
+      type: object
+      description: "[미구현]"
+      properties:
+        id: { type: string }
+        name: { type: string }
+        provisionType: { type: string, example: 공공 OpenAPI }
+        schedule: { type: string, example: 매일 06:00 }
+        active: { type: boolean }
+        lastCollectedAt: { type: string, format: date-time }
+        lastStatus:
+          type: string
+          enum: [success, partial_failure, failure]
+
+    DataSourceInput:
+      type: object
+      description: "[미구현]"
+      required: [name, provisionType, schedule]
+      properties:
+        name: { type: string }
+        provisionType: { type: string }
+        schedule: { type: string }
+        active: { type: boolean, default: true }
+
+    DedupCandidate:
+      type: object
+      description: "[미구현]"
+      properties:
+        candidateId: { type: string }
+        primaryShopId: { type: integer, format: int64 }
+        duplicateShopId: { type: integer, format: int64 }
+        matchBasis:
+          type: string
+          enum: [business_number, name_address_phone, name_address]
+        status:
+          type: string
+          enum: [pending_review, merged, kept_separate]
+
+    HistoryEntry:
+      type: object
+      description: "[미구현]"
+      properties:
+        shopId: { type: integer, format: int64 }
+        changedAt: { type: string, format: date-time }
+        field: { type: string, example: 영업 상태 }
+        beforeValue: { type: string, nullable: true }
+        afterValue: { type: string, nullable: true }
+        cause: { type: string, example: 인허가 갱신 }
+
+    # ------------------------------- AI CRM (미구현 · 엔터티만 존재 · R-RABMND)
+    VisitStatus:
+      type: string
+      enum: [NOT_VISITED, FIRST_VISIT, SECOND_VISIT, THIRD_VISIT, FOURTH_VISIT, FIFTH_VISIT]
+      description: >
+        `domain/salesactivity/entity/VisitStatus.java`.
+        **방문 "차수"** 를 나타냅니다 — 미방문, 1차~5차 방문.
+
+
+        ⚠️ 기획서(`R-RABMND`)가 요구하는 **접촉 "결과"**(관심 있음 / 거절 / 보류 / 부재)와는
+        다른 축입니다. AI 후속 제안은 "실패 또는 보류 결과가 기록되면 시작"하는데,
+        이 enum 으로는 그 조건을 표현할 수 없습니다 — 백엔드 협의 필요.
+
+    User:
+      type: object
+      description: >
+        `domain/user/entity/User.java`. 엔터티만 있고 컨트롤러·서비스는 없습니다.
+
+
+        ⚠️ **비밀번호 컬럼이 없습니다.** 로그인·회원가입을 붙이려면 인증 필드부터 추가해야 합니다.
+      properties:
+        id: { type: integer, format: int64 }
+        name: { type: string, maxLength: 50 }
+        email: { type: string, maxLength: 100 }
+        phone: { type: string, maxLength: 30, nullable: true }
+        assignedRegionId:
+          type: integer
+          format: int64
+          nullable: true
+          description: 담당 구역. Region 엔터티가 없어 현재는 단순 Long 값입니다.
+
+    SalesActivity:
+      type: object
+      description: >
+        `domain/salesactivity/entity/SalesActivity.java`. **엔터티와 리포지토리만 있고
+        컨트롤러·서비스가 없어 호출 가능한 엔드포인트는 아직 없습니다.**
+      properties:
+        id: { type: integer, format: int64 }
+        shopId: { type: integer, format: int64, description: "`shop_id` (nullable=false)" }
+        userId: { type: integer, format: int64, description: "`user_id` (nullable=false)" }
+        status: { $ref: "#/components/schemas/VisitStatus" }
+        memo: { type: string, nullable: true, description: "TEXT 컬럼. 자유 입력." }
+        visitedAt: { type: string, format: date, nullable: true, description: 방문일 (LocalDate) }
+
+    SalesActivityCreate:
+      type: object
+      description: "[미구현] 영업 활동 기록 요청. 현재 엔터티 필드에 맞춘 최소 형태."
+      required: [status]
+      properties:
+        status: { $ref: "#/components/schemas/VisitStatus" }
+        memo: { type: string, nullable: true }
+        visitedAt: { type: string, format: date, nullable: true }
+
