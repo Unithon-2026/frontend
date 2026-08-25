@@ -1,0 +1,202 @@
+From afaccf5d8acf92c1cd8b2769521ebe94e30ae2fd Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Tue, 25 Aug 2026 05:35:58 +0000
+Subject: [PATCH] =?UTF-8?q?feat:=20=EC=9A=B0=EC=84=A0=EC=88=9C=EC=9C=84=20?=
+ =?UTF-8?q?=EB=93=B1=EA=B8=89=201~4=20=EC=B2=B4=EA=B3=84=20=EC=A0=84?=
+ =?UTF-8?q?=ED=99=98=20=EB=B0=8F=20CORS=20=ED=97=88=EC=9A=A9=20=EC=B6=94?=
+ =?UTF-8?q?=EA=B0=80?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+우선순위 등급을 S/A/B/C 에서 1/2/3/4 로 바꾼다. 1등급이 가장 높다.
+enum 상수는 숫자로 시작할 수 없어 G1~G4 로 두고, JSON 직렬화와 쿼리
+파라미터에서는 @JsonValue/@JsonCreator 로 "1"~"4" 를 그대로 쓴다.
+PriorityGrade.from() 이 "1"~"4" 와 "G1"~"G4" 를 모두 받으므로
+GET /shops?priorityGrade=1 로 필터링된다.
+
+SecurityConfig 에 CORS 설정이 없어 브라우저가 다른 오리진에서 오는
+/api 호출을 전부 막고 있었다. app.cors.allowed-origins 로 오리진을
+지정할 수 있게 하고 로컬 개발용 기본값을 넣는다.
+
+Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_014hrjodHbpPGgRNfYpNrXU6
+---
+ .../domain/priority/entity/PriorityGrade.java | 46 ++++++++++++++++++-
+ .../service/PriorityScoreCalculator.java      | 20 ++++----
+ .../domain/shop/service/ShopService.java      |  6 +--
+ .../global/config/SecurityConfig.java         | 26 +++++++++++
+ 4 files changed, 84 insertions(+), 14 deletions(-)
+
+diff --git a/src/main/java/com/unithon/meetroute/domain/priority/entity/PriorityGrade.java b/src/main/java/com/unithon/meetroute/domain/priority/entity/PriorityGrade.java
+index 59707bf..0f1a835 100644
+--- a/src/main/java/com/unithon/meetroute/domain/priority/entity/PriorityGrade.java
++++ b/src/main/java/com/unithon/meetroute/domain/priority/entity/PriorityGrade.java
+@@ -1,5 +1,49 @@
+ package com.unithon.meetroute.domain.priority.entity;
+ 
++import com.fasterxml.jackson.annotation.JsonCreator;
++import com.fasterxml.jackson.annotation.JsonValue;
++
++/**
++ * 영업 우선순위 등급. 1등급이 가장 높고 4등급이 가장 낮다.
++ *
++ * <p>enum 상수는 숫자로 시작할 수 없어 G1~G4로 두고, JSON 직렬화·역직렬화와
++ * 쿼리 파라미터에서는 {@code "1"}~{@code "4"} 를 그대로 쓴다.
++ * DB(EnumType.STRING)에는 상수명 G1~G4가 저장된다.
++ */
+ public enum PriorityGrade {
+-    S, A, B, C
++
++    G1("1"),
++    G2("2"),
++    G3("3"),
++    G4("4");
++
++    private final String value;
++
++    PriorityGrade(String value) {
++        this.value = value;
++    }
++
++    @JsonValue
++    public String getValue() {
++        return value;
++    }
++
++    /**
++     * {@code "1"}~{@code "4"} 와 {@code "G1"}~{@code "G4"} 를 모두 받는다.
++     *
++     * @return 매칭되는 등급, 없으면 {@code null}
++     */
++    @JsonCreator
++    public static PriorityGrade from(String raw) {
++        if (raw == null || raw.isBlank()) {
++            return null;
++        }
++        String normalized = raw.trim().toUpperCase();
++        for (PriorityGrade grade : values()) {
++            if (grade.value.equals(normalized) || grade.name().equals(normalized)) {
++                return grade;
++            }
++        }
++        return null;
++    }
+ }
+diff --git a/src/main/java/com/unithon/meetroute/domain/priority/service/PriorityScoreCalculator.java b/src/main/java/com/unithon/meetroute/domain/priority/service/PriorityScoreCalculator.java
+index 39f9e33..28081c5 100644
+--- a/src/main/java/com/unithon/meetroute/domain/priority/service/PriorityScoreCalculator.java
++++ b/src/main/java/com/unithon/meetroute/domain/priority/service/PriorityScoreCalculator.java
+@@ -55,9 +55,9 @@ public class PriorityScoreCalculator {
+ 
+     private static final int PHONE_PRESENT_SCORE = 20;
+ 
+-    private static final int GRADE_S_THRESHOLD = 80;
+-    private static final int GRADE_A_THRESHOLD = 60;
+-    private static final int GRADE_B_THRESHOLD = 40;
++    private static final int GRADE_1_THRESHOLD = 80;
++    private static final int GRADE_2_THRESHOLD = 60;
++    private static final int GRADE_3_THRESHOLD = 40;
+ 
+     public Result calculate(Shop shop) {
+         int score = businessTypeScore(shop.getBusinessType())
+@@ -95,16 +95,16 @@ public class PriorityScoreCalculator {
+     }
+ 
+     private PriorityGrade gradeOf(int score) {
+-        if (score >= GRADE_S_THRESHOLD) {
+-            return PriorityGrade.S;
++        if (score >= GRADE_1_THRESHOLD) {
++            return PriorityGrade.G1;
+         }
+-        if (score >= GRADE_A_THRESHOLD) {
+-            return PriorityGrade.A;
++        if (score >= GRADE_2_THRESHOLD) {
++            return PriorityGrade.G2;
+         }
+-        if (score >= GRADE_B_THRESHOLD) {
+-            return PriorityGrade.B;
++        if (score >= GRADE_3_THRESHOLD) {
++            return PriorityGrade.G3;
+         }
+-        return PriorityGrade.C;
++        return PriorityGrade.G4;
+     }
+ 
+     public record Result(int score, PriorityGrade grade) {
+diff --git a/src/main/java/com/unithon/meetroute/domain/shop/service/ShopService.java b/src/main/java/com/unithon/meetroute/domain/shop/service/ShopService.java
+index cd05611..4475862 100644
+--- a/src/main/java/com/unithon/meetroute/domain/shop/service/ShopService.java
++++ b/src/main/java/com/unithon/meetroute/domain/shop/service/ShopService.java
+@@ -86,10 +86,10 @@ public class ShopService {
+         if (raw == null || raw.isBlank()) {
+             return null;
+         }
+-        try {
+-            return PriorityGrade.valueOf(raw.trim().toUpperCase());
+-        } catch (IllegalArgumentException e) {
++        PriorityGrade grade = PriorityGrade.from(raw);
++        if (grade == null) {
+             throw new BusinessException(ErrorCode.INVALID_INPUT, "priorityGrade 값이 올바르지 않습니다: " + raw);
+         }
++        return grade;
+     }
+ }
+diff --git a/src/main/java/com/unithon/meetroute/global/config/SecurityConfig.java b/src/main/java/com/unithon/meetroute/global/config/SecurityConfig.java
+index 6a4553e..7020f37 100644
+--- a/src/main/java/com/unithon/meetroute/global/config/SecurityConfig.java
++++ b/src/main/java/com/unithon/meetroute/global/config/SecurityConfig.java
+@@ -1,9 +1,15 @@
+ package com.unithon.meetroute.global.config;
+ 
++import org.springframework.beans.factory.annotation.Value;
+ import org.springframework.context.annotation.Bean;
+ import org.springframework.context.annotation.Configuration;
+ import org.springframework.security.config.annotation.web.builders.HttpSecurity;
+ import org.springframework.security.web.SecurityFilterChain;
++import org.springframework.web.cors.CorsConfiguration;
++import org.springframework.web.cors.CorsConfigurationSource;
++import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
++
++import java.util.List;
+ 
+ /**
+  * TEMPORARY hackathon-wide permitAll — auth 담당자가 나중에 실제 인가 로직으로 교체 예정.
+@@ -12,9 +18,16 @@ import org.springframework.security.web.SecurityFilterChain;
+ @Configuration
+ public class SecurityConfig {
+ 
++    /**
++     * 프론트엔드 오리진. 콤마로 여러 개 지정할 수 있고, 값을 주지 않으면 로컬 개발용 기본값을 쓴다.
++     */
++    @Value("${app.cors.allowed-origins:http://localhost:3000,http://localhost:5173,http://127.0.0.1:3000}")
++    private List<String> allowedOrigins;
++
+     @Bean
+     public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
+         http
++                .cors(cors -> cors.configurationSource(corsConfigurationSource()))
+                 .csrf(csrf -> csrf.disable())
+                 .httpBasic(httpBasic -> httpBasic.disable())
+                 .formLogin(formLogin -> formLogin.disable())
+@@ -22,4 +35,17 @@ public class SecurityConfig {
+ 
+         return http.build();
+     }
++
++    @Bean
++    public CorsConfigurationSource corsConfigurationSource() {
++        CorsConfiguration config = new CorsConfiguration();
++        config.setAllowedOrigins(allowedOrigins);
++        config.setAllowedMethods(List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
++        config.setAllowedHeaders(List.of("*"));
++        config.setMaxAge(3600L);
++
++        UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
++        source.registerCorsConfiguration("/api/**", config);
++        return source;
++    }
+ }
+-- 
+2.43.0
+
